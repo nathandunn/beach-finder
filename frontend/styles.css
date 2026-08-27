@@ -1,0 +1,459 @@
+/* Beach Finder -- a light, outdoorsy look: sand, sea, sky. Not part of the
+   dark-arcade sim suite; this is meant to feel like a sunny afternoon. */
+
+:root {
+  --sand-50: #fffaf0;
+  --sand-100: #fdf3e0;
+  --sand-200: #f5e3c3;
+  --sea-500: #1a8fa3;
+  --sea-600: #147485;
+  --sea-700: #0f5a67;
+  --sky-100: #e8f6fa;
+  --sky-200: #cdeef6;
+  --ink-900: #1f2a2e;
+  --ink-700: #3d4d52;
+  --ink-500: #5c6e73;
+  --coral-500: #ef7a5f;
+  --coral-600: #dd6549;
+  --score-great: #2f9e5b;
+  --score-good: #6fb04f;
+  --score-fair: #d9a441;
+  --score-poor: #c96a4a;
+  --border: #e4d6ba;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --shadow: 0 4px 20px rgba(31, 42, 46, 0.08);
+  --max-width: 720px;
+  font-size: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink-900);
+  background:
+    radial-gradient(ellipse 800px 400px at 50% -10%, var(--sky-200) 0%, transparent 60%),
+    linear-gradient(180deg, var(--sand-50) 0%, var(--sand-100) 100%);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.wrap {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ---------- Header ---------- */
+
+.site-header {
+  padding: 40px 0 24px;
+  text-align: center;
+}
+
+.site-header h1 {
+  margin: 0 0 6px;
+  font-size: 2rem;
+  color: var(--sea-700);
+  letter-spacing: -0.02em;
+}
+
+.logo-mark {
+  filter: saturate(1.1);
+}
+
+.tagline {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 1.05rem;
+}
+
+/* ---------- Shared panel shell ---------- */
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  padding: 13px 28px;
+  transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--sea-500);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(26, 143, 163, 0.35);
+}
+
+.btn-primary:hover {
+  background: var(--sea-600);
+}
+
+.btn-secondary {
+  background: var(--sky-100);
+  color: var(--sea-700);
+  border: 1px solid var(--sky-200);
+}
+
+.btn-secondary:hover {
+  background: var(--sky-200);
+}
+
+.btn-link {
+  background: none;
+  color: var(--sea-600);
+  padding: 4px 8px;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+/* ---------- Location panel ---------- */
+
+.location-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hint {
+  color: var(--ink-500);
+  font-size: 0.9rem;
+}
+
+.manual-fallback {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px dashed var(--border);
+}
+
+.fallback-message {
+  color: var(--ink-700);
+  margin: 0 0 18px;
+}
+
+.manual-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.manual-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-500);
+  text-align: left;
+}
+
+.manual-form input {
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  width: 140px;
+  background: var(--sand-50);
+}
+
+.manual-form input:focus {
+  outline: 2px solid var(--sea-500);
+  outline-offset: 1px;
+}
+
+.example-cities {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.example-label {
+  font-size: 0.85rem;
+  color: var(--ink-500);
+}
+
+.example-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.example-buttons button {
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--sand-200);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 16px;
+  cursor: pointer;
+  color: var(--ink-700);
+}
+
+.example-buttons button:hover {
+  background: var(--sky-200);
+  border-color: var(--sky-200);
+}
+
+/* ---------- Loading ---------- */
+
+#loading-panel {
+  color: var(--ink-700);
+}
+
+.spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 4px solid var(--sky-200);
+  border-top-color: var(--sea-500);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#loading-message {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin: 0 0 8px;
+}
+
+.loading-subtext {
+  color: var(--ink-500);
+  font-size: 0.9rem;
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+/* ---------- Error / empty ---------- */
+
+.error-message {
+  color: var(--coral-600);
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+
+.empty-icon {
+  font-size: 2.4rem;
+  margin: 0 0 8px;
+}
+
+#empty-panel h2 {
+  margin: 0 0 8px;
+  color: var(--sea-700);
+}
+
+#empty-message {
+  color: var(--ink-500);
+  margin: 0 0 20px;
+}
+
+/* ---------- Results ---------- */
+
+.results-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 0 4px;
+  color: var(--ink-500);
+  font-size: 0.9rem;
+}
+
+.beach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.beach-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  align-items: center;
+}
+
+.beach-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--sky-100);
+  color: var(--sea-700);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.beach-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ink-900);
+  grid-column: 1;
+}
+
+.beach-distance {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--ink-500);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.beach-conditions {
+  grid-column: 1 / -1;
+  color: var(--ink-700);
+  font-size: 0.92rem;
+}
+
+.score-meter-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.score-meter {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--sand-200);
+  overflow: hidden;
+}
+
+.score-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.score-value {
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-width: 3.2em;
+  text-align: right;
+}
+
+.score-great {
+  color: var(--score-great);
+}
+.score-good {
+  color: var(--score-good);
+}
+.score-fair {
+  color: var(--score-fair);
+}
+.score-poor {
+  color: var(--score-poor);
+}
+
+.score-meter-fill.score-great {
+  background: var(--score-great);
+}
+.score-meter-fill.score-good {
+  background: var(--score-good);
+}
+.score-meter-fill.score-fair {
+  background: var(--score-fair);
+}
+.score-meter-fill.score-poor {
+  background: var(--score-poor);
+}
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+  padding: 30px 0 50px;
+  text-align: center;
+  color: var(--ink-500);
+  font-size: 0.8rem;
+}
+
+.site-footer a {
+  color: var(--sea-600);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 520px) {
+  :root {
+    font-size: 15px;
+  }
+
+  .site-header {
+    padding: 28px 0 18px;
+  }
+
+  .panel {
+    padding: 22px 18px;
+  }
+
+  .manual-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .manual-form input {
+    width: 100%;
+  }
+
+  .beach-card {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .beach-distance {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}

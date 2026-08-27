@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Beach Finder</title>
+  <meta name="description" content="Find the best-scoring beach near you, right now." />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%96%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1><span class="logo-mark">&#127958;&#65039;</span> Beach Finder</h1>
+      <p class="tagline">Nearby beaches, ranked by how good conditions are right now.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="location-panel" class="panel">
+      <div id="location-status" class="location-status">
+        <button id="use-my-location" type="button" class="btn btn-primary">
+          Use my location
+        </button>
+        <span class="hint">We only ask your browser for your position &mdash; nothing is stored.</span>
+      </div>
+
+      <div id="manual-fallback" class="manual-fallback hidden">
+        <p id="fallback-message" class="fallback-message"></p>
+        <form id="manual-form" class="manual-form">
+          <label>
+            Latitude
+            <input type="number" id="manual-lat" step="any" min="-90" max="90" placeholder="44.62" required />
+          </label>
+          <label>
+            Longitude
+            <input type="number" id="manual-lon" step="any" min="-180" max="180" placeholder="-124.05" required />
+          </label>
+          <button type="submit" class="btn btn-secondary">Search this location</button>
+        </form>
+        <div class="example-cities">
+          <span class="example-label">Or try a coastal city:</span>
+          <div class="example-buttons" id="example-cities"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="loading-panel" class="panel hidden" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loading-message">Searching for beaches near you&hellip;</p>
+      <p class="loading-subtext">
+        The first search in an area can take up to 30 seconds &mdash; we search outward in
+        widening radius bands and check live weather for every beach we find. Results are
+        cached after that, so it's instant next time.
+      </p>
+    </section>
+
+    <section id="error-panel" class="panel hidden">
+      <p id="error-message" class="error-message"></p>
+      <button id="retry-btn" type="button" class="btn btn-secondary">Try again</button>
+    </section>
+
+    <section id="empty-panel" class="panel hidden">
+      <p class="empty-icon" aria-hidden="true">&#127958;&#65039;&#128269;</p>
+      <h2>No beaches nearby</h2>
+      <p id="empty-message"></p>
+      <button id="empty-retry-btn" type="button" class="btn btn-secondary">Search a different location</button>
+    </section>
+
+    <section id="results-panel" class="hidden">
+      <div class="results-meta">
+        <span id="results-summary"></span>
+        <button id="change-location-btn" type="button" class="btn btn-link">Change location</button>
+      </div>
+      <ul id="beach-list" class="beach-list"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>
+        Beach data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        contributors via Overpass. Weather from <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+        No accounts, no tracking, no API keys.
+      </p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
