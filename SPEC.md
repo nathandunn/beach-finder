@@ -143,3 +143,43 @@ frontend/src/App.tsx, BeachCard.tsx).
 - Tests extend accordingly: arrival-score selection picks the right hourly
   row for a given drive time; sort/filter logic if server-side; fixture for
   the hourly response shape.
+
+---
+
+# Beach Finder — SPEC v0.4 (water-type filter)
+
+Status: agreed 2026-08-27. Motivated by real search results surfacing river
+beaches alongside ocean ones — that's a feature, so let people filter on it.
+
+## Classification — ocean / lake / river / unknown
+
+OSM beaches rarely tag their water type, but the adjacent water does.
+Classify each found beach by nearby water features (verified live: Twin Lakes
+Beach shows `natural=coastline` within 400m plus named creeks):
+
+- ocean — `natural=coastline` within the probe radius
+- lake — `water=lake|reservoir|pond` (ways or relations)
+- river — `waterway=river|riverbank` or `water=river`; `waterway=stream`
+  counts only when nothing stronger is present
+- unknown — nothing found; NEVER guess
+
+**Precedence: coastline > lake > river.** A creek mouth on an ocean beach is
+an ocean beach. Probe radius ~400m.
+
+## Mechanics
+- ONE additional batched Overpass query per search covering all found
+  beaches (union of around-clauses), not one query per beach.
+- Cached per beach with the long geometry TTL — water bodies don't move.
+- Response gains `water_type: "ocean"|"lake"|"river"|"unknown"` per beach.
+
+## Frontend — filter at the onset
+- Filter chips in the control bar, multi-select, default all on:
+  🌊 Ocean · 🏞️ Lake · 🏕️ River — plus "unclassified" beaches always shown
+  unless every chip is off (unknown must not silently vanish).
+- Client-side filtering; show per-type counts on the chips.
+- Card shows the water type as a small badge next to the name.
+
+## Testing bar
+Classification precedence (coastline beats stream; stream-only → river;
+nothing → unknown) against hand-written fixtures; batched-query construction;
+cache behavior. All offline.
