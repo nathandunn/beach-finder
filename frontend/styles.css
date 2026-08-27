@@ -701,3 +701,25 @@ body {
     padding: 14px 16px;
   }
 }
+
+/* ── beach map (SPEC v0.3 follow-up: map to the location) ── */
+.beach-map {
+  height: 200px;
+  margin-top: 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line, #dbe7e4);
+  z-index: 0;
+}
+.map-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 0.9em;
+}
+.map-links a {
+  color: var(--sea, #1d7a8c);
+  text-decoration: none;
+  font-weight: 600;
+}
+.map-links a:hover { text-decoration: underline; }

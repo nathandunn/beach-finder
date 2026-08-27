@@ -293,12 +293,44 @@
     details.className = "beach-details collapsed";
     details.innerHTML = buildDetailsHtml(beach);
 
+    // Map to the location — the only real identity an unnamed beach has.
+    var mapBox = document.createElement("div");
+    mapBox.className = "beach-map";
+    var mapLinks = document.createElement("div");
+    mapLinks.className = "map-links";
+    var gmaps = "https://www.google.com/maps/dir/?api=1&destination=" + beach.lat + "," + beach.lon;
+    var osm = "https://www.openstreetmap.org/?mlat=" + beach.lat + "&mlon=" + beach.lon + "#map=15/" + beach.lat + "/" + beach.lon;
+    mapLinks.innerHTML =
+      '<a href="' + gmaps + '" target="_blank" rel="noopener">\uD83E\uDDED Directions</a>' +
+      '<a href="' + osm + '" target="_blank" rel="noopener">View on OpenStreetMap</a>';
+    details.appendChild(mapBox);
+    details.appendChild(mapLinks);
+
+    // Map interactions must not collapse the card.
+    mapBox.addEventListener("click", function (e) { e.stopPropagation(); });
+    mapLinks.addEventListener("click", function (e) { e.stopPropagation(); });
+
     li.appendChild(header);
     li.appendChild(details);
 
+    var mapInited = false;
     li.addEventListener("click", function () {
       var isCollapsed = details.classList.toggle("collapsed");
       expandHint.textContent = isCollapsed ? "Click to see weather details ↓" : "Click to collapse ↑";
+      // Lazy-init Leaflet only on first expand: no tile requests for cards never opened,
+      // and Leaflet mis-sizes inside a hidden container, so init after it is visible.
+      if (!isCollapsed && !mapInited && typeof L !== "undefined") {
+        mapInited = true;
+        var map = L.map(mapBox, { scrollWheelZoom: false, attributionControl: true })
+          .setView([beach.lat, beach.lon], 14);
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 18,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(map);
+        L.marker([beach.lat, beach.lon]).addTo(map)
+          .bindPopup(escapeHtml(beach.name) + "<br>" + formatDistance(beach.distance_km) + " away");
+        setTimeout(function () { map.invalidateSize(); }, 0);
+      }
     });
 
     return li;
