@@ -36,6 +36,32 @@ def build_overpass_query(lat: float, lon: float, radius_km: float) -> str:
     )
 
 
+def extract_city(tags: dict[str, Any]) -> str | None:
+    """Best-effort city/locality from OSM tags (SPEC v0.3 item 8) -- no
+    geocoding service, stay keyless. In priority order:
+
+    - `addr:city` / `addr:town` / `addr:hamlet` -- direct, structured
+      address tags, most trustworthy when present.
+    - `is_in:city` -- an older structured tag some elements carry instead.
+    - `is_in` -- free-text locality hierarchy (e.g. "Newport, Lincoln
+      County, Oregon, USA"); take just the first, most specific segment.
+
+    None if nothing usable is present -- omitted from the response rather
+    than guessed at, per spec.
+    """
+    for key in ("addr:city", "is_in:city", "addr:town", "addr:hamlet"):
+        value = tags.get(key)
+        if value:
+            return value
+
+    is_in = tags.get("is_in")
+    if is_in:
+        first = is_in.split(",")[0].strip()
+        return first or None
+
+    return None
+
+
 def parse_overpass_response(payload: dict[str, Any]) -> list[BeachElement]:
     """Turn a raw Overpass JSON payload into BeachElements.
 
@@ -64,6 +90,7 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[BeachElement]:
 
         tags = element.get("tags") or {}
         name = tags.get("name")
+        city = extract_city(tags)
 
         beaches.append(
             BeachElement(
@@ -71,6 +98,7 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[BeachElement]:
                 lat=float(lat),
                 lon=float(lon),
                 name=name,
+                city=city,
             )
         )
     return beaches

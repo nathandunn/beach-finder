@@ -10,6 +10,7 @@ import httpx
 
 from .cache import TTLCache
 from .config import (
+    HOURLY_FORECAST_HOURS,
     OPEN_METEO_BACKOFF_BASE_SECONDS,
     OPEN_METEO_MARINE_URL,
     OPEN_METEO_MAX_RETRIES,
@@ -18,22 +19,62 @@ from .config import (
     OPEN_METEO_URL,
     WEATHER_CACHE_COORD_PRECISION,
 )
-from .models import WeatherConditions
+from .models import HourlyPoint, WeatherConditions
 
 
-def parse_open_meteo_response(payload: dict[str, Any]) -> dict[str, float]:
-    """Extract the fields we care about from an Open-Meteo `current` block.
+def parse_hourly_block(hourly: dict[str, Any]) -> list[HourlyPoint]:
+    """Parse an Open-Meteo `hourly` block (parallel arrays keyed by field
+    name) into a list of HourlyPoint, one per hour, in the order returned.
+
+    Requested with `forecast_hours=N` (see get_conditions below), so index
+    0 is the current hour -- that's what makes the arrival/+1h/+3h row
+    selection in app/forecast.py just an index into this list.
+
+    Zips to the shortest array rather than assuming they're all the same
+    length, and defaults any missing individual value the same way
+    parse_open_meteo_response does for `current` -- a partial hourly
+    response shouldn't blow up the whole beach's forecast.
+    """
+    times = hourly.get("time") or []
+    temps = hourly.get("temperature_2m") or []
+    winds = hourly.get("wind_speed_10m") or []
+    precip = hourly.get("precipitation") or []
+    clouds = hourly.get("cloud_cover") or []
+
+    points: list[HourlyPoint] = []
+    for t, temp, wind, rain, cloud in zip(times, temps, winds, precip, clouds):
+        points.append(
+            HourlyPoint(
+                time=str(t),
+                temperature_f=float(temp) if temp is not None else 65.0,
+                wind_mph=float(wind) if wind is not None else 5.0,
+                precipitation_mm=float(rain) if rain is not None else 0.0,
+                cloud_cover_pct=float(cloud) if cloud is not None else 50.0,
+            )
+        )
+    return points
+
+
+def parse_open_meteo_response(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract the fields we care about from an Open-Meteo response: the
+    `current` block (current conditions) and the `hourly` block (used for
+    arrival/+1h/+3h scoring and the "next hours" forecast on the card).
 
     Raises KeyError/TypeError-free: missing fields just fall back to
     reasonable defaults, since a partial response shouldn't sink the whole
     beach's score.
     """
     current = payload.get("current", {})
+    wind_direction = current.get("wind_direction_10m")
+    humidity = current.get("relative_humidity_2m")
     return {
         "temperature_f": float(current.get("temperature_2m", 65.0)),
         "wind_mph": float(current.get("wind_speed_10m", 5.0)),
+        "wind_direction_deg": float(wind_direction) if wind_direction is not None else 0.0,
+        "humidity_pct": float(humidity) if humidity is not None else 70.0,
         "precipitation_mm": float(current.get("precipitation", 0.0) or 0.0),
         "cloud_cover_pct": float(current.get("cloud_cover", 50.0)),
+        "hourly": parse_hourly_block(payload.get("hourly") or {}),
     }
 
 
@@ -97,10 +138,18 @@ class HttpWeatherClient:
         return None
 
     async def get_conditions(self, lat: float, lon: float) -> WeatherConditions:
+        # SPEC v0.3 constraint: current + hourly in the SAME request (one
+        # Open-Meteo call per beach, unchanged) -- `current` and `hourly`
+        # are just two more query params on the one /forecast call.
+        # `forecast_hours` caps how many hourly rows come back (see
+        # config.HOURLY_FORECAST_HOURS) so the response stays small and the
+        # array's length is predictable for the arrival/+1h/+3h clamp.
         params = {
             "latitude": lat,
             "longitude": lon,
-            "current": "temperature_2m,wind_speed_10m,precipitation,cloud_cover",
+            "current": "temperature_2m,wind_speed_10m,wind_direction_10m,relative_humidity_2m,precipitation,cloud_cover",
+            "hourly": "temperature_2m,wind_speed_10m,wind_direction_10m,relative_humidity_2m,precipitation,cloud_cover",
+            "forecast_hours": HOURLY_FORECAST_HOURS,
             "temperature_unit": "fahrenheit",
             "wind_speed_unit": "mph",
         }
@@ -116,8 +165,11 @@ class HttpWeatherClient:
             fields = {
                 "temperature_f": 65.0,
                 "wind_mph": 5.0,
+                "wind_direction_deg": 0.0,
+                "humidity_pct": 70.0,
                 "precipitation_mm": 0.0,
                 "cloud_cover_pct": 50.0,
+                "hourly": [],
             }
 
         wave_height_m: float | None = None
@@ -130,7 +182,8 @@ class HttpWeatherClient:
         except httpx.HTTPError:
             wave_height_m = None
 
-        return WeatherConditions(wave_height_m=wave_height_m, **fields)
+        hourly = tuple(fields.pop("hourly"))
+        return WeatherConditions(wave_height_m=wave_height_m, hourly=hourly, **fields)
 
 
 def weather_cache_key(lat: float, lon: float) -> tuple[float, float]:

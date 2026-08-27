@@ -8,10 +8,12 @@ import asyncio
 from .config import (
     DEFAULT_RADIUS_BANDS_KM,
     DEFAULT_TARGET_COUNT,
+    HOURLY_FORECAST_DISPLAY_HOURS,
     MAX_RADIUS_KM,
     WEATHER_FETCH_CONCURRENCY,
 )
-from .geo import haversine_km
+from .forecast import compute_time_based_scores
+from .geo import estimate_drive_time_minutes, haversine_km
 from .models import BeachElement, FindBeachesResult, ScoredBeach
 from .scoring import compute_score, summarize_conditions
 from .search import BeachSearchClient, tiered_search
@@ -51,15 +53,27 @@ class BeachFinderService:
             async with self._weather_semaphore:
                 conditions = await self._weather_client.get_conditions(element.lat, element.lon)
             distance = haversine_km(lat, lon, element.lat, element.lon)
+            distance_km = round(distance, 2)
+            drive_time_minutes = estimate_drive_time_minutes(distance_km)
+            time_based_scores = compute_time_based_scores(
+                conditions.hourly, conditions.wave_height_m, drive_time_minutes
+            )
+            # "Next hours" forecast for the card: the hours *after* now
+            # (hourly[0] is "now", already covered by current conditions).
+            hourly_forecast = list(conditions.hourly[1 : 1 + HOURLY_FORECAST_DISPLAY_HOURS])
             return ScoredBeach(
                 osm_id=element.osm_id,
                 name=element.name or "Unnamed Beach",
+                city=element.city,
                 lat=element.lat,
                 lon=element.lon,
-                distance_km=round(distance, 2),
+                distance_km=distance_km,
+                drive_time_minutes=drive_time_minutes,
                 score=compute_score(conditions),
+                scores=time_based_scores,
                 conditions=conditions,
                 summary=summarize_conditions(conditions),
+                hourly_forecast=hourly_forecast,
             )
 
         if outcome.beaches:

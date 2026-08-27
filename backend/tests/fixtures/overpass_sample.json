@@ -16,7 +16,8 @@
       "tags": {
         "natural": "beach",
         "surface": "sand",
-        "name": "Agate Beach"
+        "name": "Agate Beach",
+        "addr:city": "Newport"
       }
     },
     {
@@ -28,7 +29,8 @@
       },
       "tags": {
         "natural": "beach",
-        "surface": "sand"
+        "surface": "sand",
+        "is_in": "Lincoln County, Oregon, USA"
       }
     },
     {

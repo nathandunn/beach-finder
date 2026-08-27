@@ -13,9 +13,17 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .cache import KeyedLock, TTLCache
+from .compass import degrees_to_compass
 from .config import TILE_CACHE_TTL_SECONDS, WEATHER_CACHE_TTL_SECONDS
 from .overpass import CachingOverpassClient, HttpOverpassClient
-from .schemas import BeachesResponse, BeachOut, ConditionsOut, HealthResponse
+from .schemas import (
+    BeachesResponse,
+    BeachOut,
+    ConditionsOut,
+    HealthResponse,
+    HourlyForecastOut,
+    ScoresOut,
+)
 from .service import BeachFinderService
 from .weather import CachingWeatherClient, HttpWeatherClient
 
@@ -69,18 +77,38 @@ async def get_beaches(
         BeachOut(
             id=b.osm_id,
             name=b.name,
+            city=b.city,
             lat=b.lat,
             lon=b.lon,
             distance_km=b.distance_km,
+            drive_time_minutes=b.drive_time_minutes,
             score=b.score,
+            scores=ScoresOut(
+                arrival=b.scores.arrival,
+                plus1h=b.scores.plus1h,
+                plus3h=b.scores.plus3h,
+            ),
             conditions=ConditionsOut(
                 temperature_f=b.conditions.temperature_f,
                 wind_mph=b.conditions.wind_mph,
+                wind_direction_deg=b.conditions.wind_direction_deg,
+                wind_compass=degrees_to_compass(b.conditions.wind_direction_deg),
+                humidity_pct=b.conditions.humidity_pct,
                 precipitation_mm=b.conditions.precipitation_mm,
                 cloud_cover_pct=b.conditions.cloud_cover_pct,
                 wave_height_m=b.conditions.wave_height_m,
                 summary=b.summary,
             ),
+            hourly_forecast=[
+                HourlyForecastOut(
+                    time=h.time,
+                    temperature_f=h.temperature_f,
+                    wind_mph=h.wind_mph,
+                    precipitation_mm=h.precipitation_mm,
+                    cloud_cover_pct=h.cloud_cover_pct,
+                )
+                for h in b.hourly_forecast
+            ],
         )
         for b in result.beaches
     ]

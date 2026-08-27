@@ -66,3 +66,28 @@ WEATHER_FETCH_CONCURRENCY = 6
 # decimal places (~110m at 3dp) before being used as a cache key, so beaches
 # that share a coordinate (or nearly do) share a weather fetch.
 WEATHER_CACHE_COORD_PRECISION = 3
+
+# --- Drive time (SPEC v0.3, borrowed from the Oregon Beach App) ------------
+
+# Oregon's heuristic, unchanged: assume a flat average speed, no traffic or
+# routing. minutes = distance_miles / ASSUMED_DRIVE_SPEED_MPH * 60.
+ASSUMED_DRIVE_SPEED_MPH = 45.0
+
+KM_TO_MILES = 0.621371
+
+# --- Time-based scores / hourly forecast (SPEC v0.3) -----------------------
+
+# How many hours of hourly forecast to request from Open-Meteo per beach
+# (in the same call as `current`), starting at the current hour (index 0).
+# Needs to comfortably cover the worst case this app can produce: the
+# 500-mile search ceiling is ~11h of drive time at 45mph, plus the +3h
+# lookahead on top of arrival is ~14h. 24h leaves headroom for that with a
+# single day of hourly data. Drive times that land beyond this horizon
+# clamp to the last available hourly row rather than erroring -- see
+# app/forecast.py.
+HOURLY_FORECAST_HOURS = 24
+
+# How many hours of "next N hours" forecast to surface in the API response
+# and render on the card -- distinct from HOURLY_FORECAST_HOURS above,
+# which is how much we *request*.
+HOURLY_FORECAST_DISPLAY_HOURS = 3
