@@ -56,3 +56,40 @@ Without caching this app is unusably slow. Caching is not optional.
 - Accounts, favourites, persistence of user preferences
 - Tide data (no good free global source)
 - Photos
+
+---
+
+# Beach Finder — SPEC v0.2 (build + deploy)
+
+Status: agreed 2026-08-27. v0.1's scope is confirmed unchanged — build it.
+Additions below are deployment and naming only.
+
+## Confirmed
+The v0.1 design stands: browser geolocation ("pulls from the local area, not
+just Oregon"), Overpass for beaches, Open-Meteo for weather, tiered-radius
+search, mandatory caching, FastAPI backend, manual-location fallback.
+
+## Deployment (per hub-orchestrator/CLAUDE.md)
+- Two containers on the hub's `web` network: `beach-finder-backend`
+  (FastAPI + cache) and `beach-finder-frontend` (static, nginx). Compose or
+  plain Dockerfiles — match the beach app's shape.
+- Route: `beaches.apps.precogsoftwareservices.com`, path-split like the
+  Oregon app: `/api/*` → backend, rest → frontend. (Caddy edit happens at
+  deploy time, not by the implementing agent.)
+- Cache lives in-process or on-disk in the backend container — no Postgres
+  unless genuinely needed; v0.1's cache needs (tile TTL + 30-min weather)
+  fit an in-memory store with optional disk snapshot.
+- No API keys anywhere (both upstreams are keyless). Respect Overpass rate
+  limits: single flight per tile, backoff on 429/504.
+
+## Scoring
+Reuse the Oregon app's *approach* (readable 0–100 score from temperature,
+wind, precipitation, cloud; wave height where present), re-derived, not
+copied. Document the formula in the README.
+
+## Testing bar
+Backend: pytest covering the tiered-search accumulator (stop-at-target,
+ceiling), cache TTL behavior, scoring formula, and Overpass/Open-Meteo
+response parsing against recorded fixtures (no live network in tests).
+Frontend: keep it simple — a static page with fetch; the smoke-bundle check
+must pass.
