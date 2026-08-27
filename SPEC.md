@@ -93,3 +93,53 @@ ceiling), cache TTL behavior, scoring formula, and Overpass/Open-Meteo
 response parsing against recorded fixtures (no live network in tests).
 Frontend: keep it simple — a static page with fetch; the smoke-bundle check
 must pass.
+
+---
+
+# Beach Finder — SPEC v0.3 (borrow the Oregon feature set)
+
+Status: agreed 2026-08-27. Bring over as much of the Oregon Beach App's
+feature set as translates globally. Inventory taken from
+/workspace/apps/beach (backend/weather_service.py, main.py, schemas.py,
+frontend/src/App.tsx, BeachCard.tsx).
+
+## Borrow — in priority order
+
+1. **Drive time** — estimate minutes from distance (Oregon uses distance/45mph;
+   keep that heuristic, note it in the README).
+2. **Time-based scores** — the Oregon app's signature: score conditions at
+   ARRIVAL (now + drive time), and at arrival +1h and +3h, computed from the
+   hourly forecast with the same 0–100 formula. Response carries
+   `scores: {arrival, plus1h, plus3h}` alongside the current score.
+   Open-Meteo makes this easier than NWS: request `hourly=` fields directly,
+   no text parsing.
+3. **Hourly forecast** — next 3 hours per beach (time, temp, wind, precip,
+   cloud) in the response and rendered on the card.
+4. **Wind direction + humidity** — add to current conditions (Open-Meteo:
+   `wind_direction_10m`, `relative_humidity_2m`); show direction as a compass
+   point like Oregon does.
+5. **Sort control** — by distance or by (arrival) score. Oregon's third sort,
+   latitude/N→S, is Oregon-geography-specific: substitute "alphabetical" or
+   drop it.
+6. **Max-distance filter** — slider like Oregon's, filtering the returned
+   list client-side.
+7. **Score color classes** — good/fair/poor color treatment on the score,
+   matching the meter already present.
+8. **City/locality** — Oregon hardcodes city per beach; globally, use the
+   OSM tags when Overpass provides them (addr:city / is_in etc.) and omit
+   otherwise. No new geocoding dependency, stay keyless.
+
+## Not borrowed, and why
+- Postgres + hourly scheduler — the in-memory TTL cache already covers this
+  at beach-finder's scale; revisit only if cold searches become a problem.
+- React/TypeScript — frontend stays no-build static per v0.2.
+- NWS — US-only; Open-Meteo remains the source.
+
+## Constraints
+- One Open-Meteo call per beach must fetch current + hourly together (no
+  second request per beach); marine wave call unchanged.
+- Scoring formula unchanged for "current"; arrival/+1h/+3h reuse it on
+  forecast rows.
+- Tests extend accordingly: arrival-score selection picks the right hourly
+  row for a given drive time; sort/filter logic if server-side; fixture for
+  the hourly response shape.
