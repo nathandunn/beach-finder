@@ -72,7 +72,12 @@ class WaterFeature:
 
     lat: float
     lon: float
+    # Full geometry vertices (from `out geom`), when the element is a way or
+    # relation. A long coastline way's CENTER can be miles from a beach the
+    # way itself passes right next to, so membership tests must use these
+    # when present; lat/lon alone is only trustworthy for nodes.
     tags: dict[str, Any]
+    points: tuple[tuple[float, float], ...] | None = None
 
 
 def classify_element(tags: dict[str, Any]) -> str | None:
@@ -123,7 +128,8 @@ def classify_beaches(
     for beach in beaches:
         tiers: set[str] = set()
         for feature in features:
-            if haversine_km(beach.lat, beach.lon, feature.lat, feature.lon) > radius_km:
+            pts = feature.points or ((feature.lat, feature.lon),)
+            if all(haversine_km(beach.lat, beach.lon, la, lo) > radius_km for la, lo in pts):
                 continue
             tier = classify_element(feature.tags)
             if tier is not None:
@@ -175,7 +181,12 @@ def build_water_type_query(
         clauses.append(f'  nwr["water"="river"](around:{radius_m},{lat},{lon});')
 
     body = "\n".join(clauses)
-    return f"[out:json][timeout:{timeout_s}];\n(\n{body}\n);\nout center;"
+    # `out geom` (not `out center`): the around-filter matches on a way's true
+    # geometry, so the membership test must measure against that geometry too.
+    # A coastline way's center can sit far outside the probe radius even when
+    # the way runs along the beach - with `out center` those features were
+    # dropped and ocean beaches classified as river (found live, 2026-08-27).
+    return f"[out:json][timeout:{timeout_s}];\n(\n{body}\n);\nout geom;"
 
 
 def parse_water_features(payload: dict[str, Any]) -> list[WaterFeature]:
@@ -187,18 +198,44 @@ def parse_water_features(payload: dict[str, Any]) -> list[WaterFeature]:
     features: list[WaterFeature] = []
     for element in payload.get("elements", []):
         el_type = element.get("type")
+        points: list[tuple[float, float]] = []
         if el_type == "node":
             lat = element.get("lat")
             lon = element.get("lon")
         else:
-            center = element.get("center") or {}
-            lat = center.get("lat")
-            lon = center.get("lon")
+            # `out geom`: ways carry a `geometry` vertex list; relations carry
+            # it per member. Fall back to `center` for older cached payloads.
+            for pt in element.get("geometry") or []:
+                if pt and pt.get("lat") is not None and pt.get("lon") is not None:
+                    points.append((float(pt["lat"]), float(pt["lon"])))
+            for member in element.get("members") or []:
+                for pt in member.get("geometry") or []:
+                    if pt and pt.get("lat") is not None and pt.get("lon") is not None:
+                        points.append((float(pt["lat"]), float(pt["lon"])))
+            if points:
+                lat, lon = points[0]
+            else:
+                center = element.get("center") or {}
+                lat = center.get("lat")
+                lon = center.get("lon")
 
         if lat is None or lon is None:
             continue
 
-        features.append(WaterFeature(lat=float(lat), lon=float(lon), tags=element.get("tags") or {}))
+        # Cap vertices per element so a monster relation can't bloat memory;
+        # an even stride keeps endpoints-ish coverage along the geometry.
+        MAX_PTS = 500
+        if len(points) > MAX_PTS:
+            stride = len(points) // MAX_PTS + 1
+            points = points[::stride]
+
+        features.append(
+            WaterFeature(
+                lat=float(lat), lon=float(lon),
+                points=tuple(points) if points else None,
+                tags=element.get("tags") or {},
+            )
+        )
     return features
 
 

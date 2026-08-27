@@ -156,7 +156,7 @@ class TestBuildWaterTypeQuery:
         assert 'nwr["water"~"^(lake|reservoir|pond)$"]' in query
         assert 'nwr["waterway"~"^(river|riverbank|stream)$"]' in query
         assert 'nwr["water"="river"]' in query
-        assert "out center;" in query
+        assert "out geom;" in query
 
     def test_multiple_beaches_all_present_in_one_union(self):
         beaches = [beach(f"way/{i}", 44.0 + i * 0.1, -124.0) for i in range(5)]
@@ -372,3 +372,29 @@ class TestCachingWaterTypeClient:
         await client.classify([b1])
         await client.classify([b1])
         assert len(inner.calls) == 1
+
+
+class TestLongWayAttribution:
+    """Regression: a coastline way whose CENTER is far from the beach but
+    whose GEOMETRY passes within the probe radius must still classify the
+    beach as ocean (found live 2026-08-27 - `out center` dropped coastlines
+    and ocean beaches classified as river)."""
+
+    def test_distant_center_near_vertices_counts(self):
+        b = beach("way/1", 36.9645, -122.0125)
+        coastline = WaterFeature(
+            lat=37.4, lon=-122.9,  # center: ~55 km away
+            tags={"natural": "coastline"},
+            points=((37.4, -122.9), (36.9640, -122.0130), (36.7, -121.8)),
+        )
+        creek = WaterFeature(
+            lat=36.9656, lon=-122.0094, tags={"waterway": "stream"},
+        )
+        result = classify_beaches([b], [coastline, creek])
+        assert result["way/1"] == "ocean"
+
+    def test_no_points_falls_back_to_center(self):
+        b = beach("way/1", 36.9645, -122.0125)
+        far_no_geom = WaterFeature(lat=37.4, lon=-122.9, tags={"natural": "coastline"})
+        result = classify_beaches([b], [far_no_geom])
+        assert result["way/1"] == "unknown"
