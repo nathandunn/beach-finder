@@ -104,6 +104,49 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[BeachElement]:
     return beaches
 
 
+async def post_overpass_query(client: httpx.AsyncClient, query: str) -> dict[str, Any] | None:
+    """POST a raw Overpass QL query with retry/backoff on 429/504 and the
+    shared User-Agent, returning the parsed JSON payload.
+
+    Returns None if every retry is exhausted, the response is a
+    non-retryable error, or the body isn't valid JSON -- callers turn that
+    into whatever "nothing found" behavior fits their situation (an empty
+    beach list for a band search, "unknown" for every beach in the water-
+    type batch query, etc). Shared by HttpOverpassClient (beach geometry)
+    and HttpWaterTypeClient (SPEC v0.4 water features) so both upstream
+    calls get identical politeness -- one retry/backoff implementation,
+    not two copies that could drift.
+    """
+    headers = {"User-Agent": OVERPASS_USER_AGENT}
+
+    for attempt in range(OVERPASS_MAX_RETRIES):
+        try:
+            response = await client.post(OVERPASS_URL, data={"data": query}, headers=headers)
+        except httpx.TimeoutException:
+            if attempt == OVERPASS_MAX_RETRIES - 1:
+                return None
+            await asyncio.sleep(OVERPASS_BACKOFF_BASE_SECONDS * (2**attempt))
+            continue
+
+        if response.status_code in OVERPASS_RETRY_STATUS_CODES:
+            if attempt == OVERPASS_MAX_RETRIES - 1:
+                return None
+            await asyncio.sleep(OVERPASS_BACKOFF_BASE_SECONDS * (2**attempt))
+            continue
+
+        if response.status_code >= 400:
+            # Non-retryable error (bad query, etc) -- don't fail the whole
+            # caller, just report nothing found this call.
+            return None
+
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    return None
+
+
 class HttpOverpassClient:
     """Talks to the real Overpass API, with retry/backoff on 429/504.
 
@@ -128,37 +171,10 @@ class HttpOverpassClient:
     async def search(self, lat: float, lon: float, radius_km: float) -> list[BeachElement]:
         query = build_overpass_query(lat, lon, radius_km)
         client = await self._get_client()
-        headers = {"User-Agent": OVERPASS_USER_AGENT}
-
-        for attempt in range(OVERPASS_MAX_RETRIES):
-            try:
-                response = await client.post(
-                    OVERPASS_URL, data={"data": query}, headers=headers
-                )
-            except httpx.TimeoutException:
-                if attempt == OVERPASS_MAX_RETRIES - 1:
-                    return []
-                await asyncio.sleep(OVERPASS_BACKOFF_BASE_SECONDS * (2**attempt))
-                continue
-
-            if response.status_code in OVERPASS_RETRY_STATUS_CODES:
-                if attempt == OVERPASS_MAX_RETRIES - 1:
-                    return []
-                await asyncio.sleep(OVERPASS_BACKOFF_BASE_SECONDS * (2**attempt))
-                continue
-
-            if response.status_code >= 400:
-                # Non-retryable error (bad query, etc) -- don't fail the
-                # whole beach search, just report nothing found this band.
-                return []
-
-            try:
-                payload = response.json()
-            except ValueError:
-                return []
-            return parse_overpass_response(payload)
-
-        return []
+        payload = await post_overpass_query(client, query)
+        if payload is None:
+            return []
+        return parse_overpass_response(payload)
 
 
 def tile_key(lat: float, lon: float, tile_size_deg: float = TILE_SIZE_DEG) -> tuple[int, int]:

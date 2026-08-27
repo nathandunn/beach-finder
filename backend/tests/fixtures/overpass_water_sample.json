@@ -1,0 +1,89 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-08-27T06:42:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 500001,
+      "center": {
+        "lat": 44.6246,
+        "lon": -124.058
+      },
+      "tags": {
+        "natural": "coastline"
+      }
+    },
+    {
+      "type": "way",
+      "id": 500002,
+      "center": {
+        "lat": 44.6249,
+        "lon": -124.0582
+      },
+      "tags": {
+        "waterway": "stream",
+        "name": "Jump Off Joe Creek"
+      }
+    },
+    {
+      "type": "relation",
+      "id": 500003,
+      "center": {
+        "lat": 44.9301,
+        "lon": -122.9302
+      },
+      "tags": {
+        "water": "lake",
+        "name": "Twin Lakes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 500004,
+      "center": {
+        "lat": 44.9305,
+        "lon": -122.9298
+      },
+      "tags": {
+        "waterway": "stream",
+        "name": "Feeder Creek"
+      }
+    },
+    {
+      "type": "way",
+      "id": 500005,
+      "center": {
+        "lat": 45.5, "lon": -123.1
+      },
+      "tags": {
+        "waterway": "river",
+        "name": "Wide River"
+      }
+    },
+    {
+      "type": "node",
+      "id": 500006,
+      "lat": 45.5005,
+      "lon": -123.1005,
+      "tags": {
+        "waterway": "stream",
+        "name": "Little Feeder"
+      }
+    },
+    {
+      "type": "way",
+      "id": 500007,
+      "center": {
+        "lat": 46.0, "lon": -121.0
+      },
+      "tags": {
+        "waterway": "stream",
+        "name": "Lonesome Creek"
+      }
+    }
+  ]
+}

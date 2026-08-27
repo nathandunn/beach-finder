@@ -92,6 +92,15 @@
             <option value="arrival">&#9728;&#65039; Weather (Best)</option>
           </select>
         </div>
+
+        <div class="water-filter" role="group" aria-label="Filter by water type">
+          <span class="water-filter-label">Water type:</span>
+          <div class="water-chips">
+            <button type="button" class="water-chip active" id="chip-ocean" data-water-type="ocean">&#127754; Ocean</button>
+            <button type="button" class="water-chip active" id="chip-lake" data-water-type="lake">&#127966;&#65039; Lake</button>
+            <button type="button" class="water-chip active" id="chip-river" data-water-type="river">&#127957; River</button>
+          </div>
+        </div>
       </div>
 
       <ul id="beach-list" class="beach-list"></ul>

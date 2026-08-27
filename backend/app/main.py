@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .cache import KeyedLock, TTLCache
 from .compass import degrees_to_compass
-from .config import TILE_CACHE_TTL_SECONDS, WEATHER_CACHE_TTL_SECONDS
+from .config import TILE_CACHE_TTL_SECONDS, WATER_TYPE_CACHE_TTL_SECONDS, WEATHER_CACHE_TTL_SECONDS
 from .overpass import CachingOverpassClient, HttpOverpassClient
 from .schemas import (
     BeachesResponse,
@@ -25,6 +25,7 @@ from .schemas import (
     ScoresOut,
 )
 from .service import BeachFinderService
+from .watertype import CachingWaterTypeClient, HttpWaterTypeClient
 from .weather import CachingWeatherClient, HttpWeatherClient
 
 
@@ -32,22 +33,27 @@ from .weather import CachingWeatherClient, HttpWeatherClient
 async def lifespan(app: FastAPI):
     overpass_http = HttpOverpassClient()
     weather_http = HttpWeatherClient()
+    water_type_http = HttpWaterTypeClient()
 
     tile_cache = TTLCache(ttl_seconds=TILE_CACHE_TTL_SECONDS)
     weather_cache = TTLCache(ttl_seconds=WEATHER_CACHE_TTL_SECONDS)
+    water_type_cache = TTLCache(ttl_seconds=WATER_TYPE_CACHE_TTL_SECONDS)
 
     search_client = CachingOverpassClient(overpass_http, tile_cache, KeyedLock())
     weather_client = CachingWeatherClient(weather_http, weather_cache, KeyedLock())
+    water_type_client = CachingWaterTypeClient(water_type_http, water_type_cache, KeyedLock())
 
-    app.state.service = BeachFinderService(search_client, weather_client)
+    app.state.service = BeachFinderService(search_client, weather_client, water_type_client)
     app.state.tile_cache = tile_cache
     app.state.weather_cache = weather_cache
+    app.state.water_type_cache = water_type_cache
 
     try:
         yield
     finally:
         await overpass_http.aclose()
         await weather_http.aclose()
+        await water_type_http.aclose()
 
 
 app = FastAPI(title="Beach Finder API", version="0.1.0", lifespan=lifespan)
@@ -83,6 +89,7 @@ async def get_beaches(
             distance_km=b.distance_km,
             drive_time_minutes=b.drive_time_minutes,
             score=b.score,
+            water_type=b.water_type,
             scores=ScoresOut(
                 arrival=b.scores.arrival,
                 plus1h=b.scores.plus1h,

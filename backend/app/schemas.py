@@ -45,6 +45,10 @@ class BeachOut(BaseModel):
     distance_km: float
     drive_time_minutes: int
     score: int
+    # SPEC v0.4: "ocean" | "lake" | "river" | "unknown", from nearby OSM
+    # water features -- never guessed, "unknown" when nothing conclusive
+    # was found nearby (see app/watertype.py).
+    water_type: str = "unknown"
     scores: ScoresOut
     conditions: ConditionsOut
     hourly_forecast: list[HourlyForecastOut]

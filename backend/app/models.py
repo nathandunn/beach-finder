@@ -76,6 +76,11 @@ class ScoredBeach:
     conditions: WeatherConditions
     summary: str
     hourly_forecast: list[HourlyPoint]
+    # SPEC v0.4: "ocean" | "lake" | "river" | "unknown", from nearby OSM
+    # water features (see app/watertype.py). Defaults to "unknown" so a
+    # ScoredBeach is always valid even before classification runs (or if
+    # it fails entirely) -- never guess.
+    water_type: str = "unknown"
 
 
 @dataclass

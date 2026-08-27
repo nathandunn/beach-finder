@@ -392,11 +392,61 @@ body {
   outline-offset: 1px;
 }
 
+/* ---------- Water-type filter chips (SPEC v0.4) ---------- */
+
+.water-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.water-filter-label {
+  font-weight: 600;
+  color: var(--sea-700);
+  font-size: 0.95rem;
+}
+
+.water-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.water-chip {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 7px 14px;
+  border: 1px solid var(--sky-200);
+  background: #fff;
+  color: var(--ink-500);
+  opacity: 0.55;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.water-chip:hover {
+  opacity: 0.8;
+}
+
+.water-chip.active {
+  background: var(--sea-500);
+  border-color: var(--sea-500);
+  color: #fff;
+  opacity: 1;
+}
+
+.water-chip.active:hover {
+  background: var(--sea-600);
+}
+
 @media (min-width: 560px) {
   .results-controls {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
 
   .distance-filter {
@@ -468,6 +518,34 @@ body {
   font-weight: 400;
   color: var(--ink-500);
   font-size: 0.9rem;
+}
+
+/* Water-type badge (SPEC v0.4): small pill next to the name, skipped
+   entirely for "unknown" beaches (see app.js waterBadgeHtml). */
+.water-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.water-badge-ocean {
+  background: var(--sky-200);
+  color: var(--sea-700);
+}
+
+.water-badge-lake {
+  background: #e1efd8;
+  color: #3f6b2b;
+}
+
+.water-badge-river {
+  background: var(--sand-200);
+  color: #8a6a2f;
 }
 
 .beach-distance {

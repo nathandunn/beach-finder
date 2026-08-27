@@ -10,6 +10,11 @@
  * borrowed, not code; units and internal state stay this app's own
  * (km, not miles; client-side sort/filter over an already-fetched list,
  * not React state).
+ *
+ * SPEC v0.4 adds water-type filter chips (Ocean/Lake/River, multi-select,
+ * all on by default) next to the existing sort/max-distance controls, a
+ * badge on each card, and per-chip counts -- all client-side over the
+ * `water_type` field the backend now attaches to every beach.
  */
 (function () {
   "use strict";
@@ -72,6 +77,18 @@
     distanceLabelMid: document.getElementById("distance-label-mid"),
     distanceLabelMax: document.getElementById("distance-label-max"),
     sortSelect: document.getElementById("sort-select"),
+
+    chipOcean: document.getElementById("chip-ocean"),
+    chipLake: document.getElementById("chip-lake"),
+    chipRiver: document.getElementById("chip-river"),
+  };
+
+  // Water-type filter chips (SPEC v0.4): label + emoji, shared between the
+  // chip button text and the card badge so both always agree.
+  var WATER_TYPE_LABELS = {
+    ocean: "🌊 Ocean",
+    lake: "🏞️ Lake",
+    river: "🏕️ River",
   };
 
   var loadingTimer = null;
@@ -83,6 +100,11 @@
   var currentData = null;
   var sortBy = "distance"; // "distance" | "arrival"
   var maxDistanceKm = null;
+
+  // Water-type chip state (SPEC v0.4) -- multi-select, all on by default.
+  // Reset to all-on for every new search (a fresh location shouldn't
+  // inherit a filter the user set up for a different area).
+  var waterFilters = { ocean: true, lake: true, river: true };
 
   function showOnly(panel) {
     [
@@ -176,6 +198,44 @@
     return div.innerHTML;
   }
 
+  // Unknown-type beaches stay visible unless every chip is off (spec:
+  // "unknown must not silently vanish"). A recognized type shows only
+  // when its own chip is active.
+  function passesWaterFilter(beach) {
+    var type = beach.water_type;
+    if (type === "ocean" || type === "lake" || type === "river") {
+      return !!waterFilters[type];
+    }
+    return waterFilters.ocean || waterFilters.lake || waterFilters.river;
+  }
+
+  function waterBadgeHtml(beach) {
+    var type = beach.water_type;
+    if (type !== "ocean" && type !== "lake" && type !== "river") return "";
+    return '<span class="water-badge water-badge-' + type + '">' + WATER_TYPE_LABELS[type] + "</span>";
+  }
+
+  // Chip counts reflect the beaches currently passing the max-distance
+  // filter (but before the water-type filter itself is applied) -- so
+  // toggling a chip always shows "how many of what's in range right now"
+  // rather than a static count from the very first fetch.
+  function updateWaterChipCounts(distanceFilteredBeaches) {
+    var counts = { ocean: 0, lake: 0, river: 0 };
+    distanceFilteredBeaches.forEach(function (b) {
+      if (counts.hasOwnProperty(b.water_type)) counts[b.water_type]++;
+    });
+    els.chipOcean.textContent = WATER_TYPE_LABELS.ocean + " (" + counts.ocean + ")";
+    els.chipLake.textContent = WATER_TYPE_LABELS.lake + " (" + counts.lake + ")";
+    els.chipRiver.textContent = WATER_TYPE_LABELS.river + " (" + counts.river + ")";
+  }
+
+  function resetWaterFilters() {
+    waterFilters = { ocean: true, lake: true, river: true };
+    [els.chipOcean, els.chipLake, els.chipRiver].forEach(function (chip) {
+      chip.classList.add("active");
+    });
+  }
+
   function weatherItemHtml(label, value) {
     return '<div class="weather-item"><span>' + label + "</span><span>" + escapeHtml(value) + "</span></div>";
   }
@@ -265,7 +325,8 @@
       (index + 1) +
       "</span>" +
       escapeHtml(beach.name) +
-      (beach.city ? '<span class="beach-city">, ' + escapeHtml(beach.city) + "</span>" : "");
+      (beach.city ? '<span class="beach-city">, ' + escapeHtml(beach.city) + "</span>" : "") +
+      waterBadgeHtml(beach);
 
     var distanceLine = document.createElement("div");
     distanceLine.className = "beach-distance";
@@ -355,9 +416,13 @@
   function applyFiltersAndRender() {
     if (!currentData) return;
     var cap = maxDistanceKm;
-    var filtered = currentData.beaches.filter(function (b) {
+    var withinDistance = currentData.beaches.filter(function (b) {
       return cap == null || b.distance_km <= cap;
     });
+
+    updateWaterChipCounts(withinDistance);
+
+    var filtered = withinDistance.filter(passesWaterFilter);
     var sorted = filtered.slice().sort(function (a, b) {
       if (sortBy === "arrival") {
         return b.scores.arrival - a.scores.arrival;
@@ -390,6 +455,7 @@
   function renderBeaches(data) {
     currentData = data;
     initControlsForData(data);
+    resetWaterFilters();
     applyFiltersAndRender();
     showOnly(els.resultsPanel);
   }
@@ -527,6 +593,18 @@
   els.sortSelect.addEventListener("change", function () {
     sortBy = els.sortSelect.value;
     applyFiltersAndRender();
+  });
+
+  [
+    { el: els.chipOcean, type: "ocean" },
+    { el: els.chipLake, type: "lake" },
+    { el: els.chipRiver, type: "river" },
+  ].forEach(function (chip) {
+    chip.el.addEventListener("click", function () {
+      waterFilters[chip.type] = !waterFilters[chip.type];
+      chip.el.classList.toggle("active", waterFilters[chip.type]);
+      applyFiltersAndRender();
+    });
   });
 
   buildExampleCityButtons();

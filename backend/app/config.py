@@ -91,3 +91,18 @@ HOURLY_FORECAST_HOURS = 24
 # and render on the card -- distinct from HOURLY_FORECAST_HOURS above,
 # which is how much we *request*.
 HOURLY_FORECAST_DISPLAY_HOURS = 3
+
+# --- Water-type classification (SPEC v0.4) ---------------------------------
+
+# How far from a beach to look for adjacent water features (coastline,
+# lake/reservoir/pond, river/riverbank, stream) when classifying its water
+# type. Verified live during spec development: Twin Lakes Beach shows
+# natural=coastline within 400m plus named creeks.
+WATER_TYPE_PROBE_RADIUS_M = 400
+
+# Water bodies don't move any more than coastlines do, so classification
+# shares the beach-geometry cache's long TTL rather than getting its own
+# tunable -- an explicit alias here (rather than importing
+# TILE_CACHE_TTL_SECONDS directly everywhere) documents that reuse is
+# deliberate, not an accident of two constants happening to match.
+WATER_TYPE_CACHE_TTL_SECONDS = TILE_CACHE_TTL_SECONDS
