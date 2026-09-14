@@ -1,11 +1,12 @@
 /* Beach Finder frontend -- plain JS, no build step, no dependencies.
  *
- * Flow: a remembered place (localStorage) searches straight away; otherwise
- * ask for geolocation on load -> fetch /api/beaches -> render a ranked list.
- * v0.5 adds search by place name (Open-Meteo geocoder, no key) with a
- * "remember this place" option, so nobody has to answer the location prompt
- * twice. Geolocation denial or failure falls back to the place search and a
- * manual lat/lon form (plus example-city shortcuts), never a dead end.
+ * Flow (v0.7): the page URL names the location -- ?lat=&lon=&label= for a
+ * chosen place, ?place= for a name to geocode, ?src=me for the browser's own
+ * position; with nothing set, the current location is the default. Every
+ * search rewrites the URL (history.replaceState) so the address bar is the
+ * bookmark. Then fetch /api/beaches -> render a ranked list. Geolocation
+ * denial or failure falls back to the place search (Open-Meteo geocoder) and
+ * a manual lat/lon form (plus example-city shortcuts), never a dead end.
  *
  * Card layout/interaction (click-to-expand, score chips, weather-item
  * rows, hourly-forecast list) and the sort/max-distance control bar are
@@ -28,7 +29,9 @@
   var API_BASE = "/api";
   // Place-name search: Open-Meteo's free geocoder (no key, CORS-enabled).
   var GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
-  var SAVED_PLACE_KEY = "beachFinder.savedPlace";
+  // v0.7: the search location lives in the page URL (?lat=&lon=&label= for a
+  // chosen place, ?src=me for the browser's own position, ?place= to
+  // geocode a name). Nothing in the URL means "current location".
 
   var EXAMPLE_CITIES = [
     { label: "Newport, OR", lat: 44.6368, lon: -124.0535 },
@@ -60,11 +63,7 @@
     placeInput: document.getElementById("place-input"),
     placeResults: document.getElementById("place-results"),
     placeMessage: document.getElementById("place-message"),
-    rememberPlace: document.getElementById("remember-place"),
-    savedPlace: document.getElementById("saved-place"),
-    savedPlaceLabel: document.getElementById("saved-place-label"),
-    savedPlaceUse: document.getElementById("saved-place-use"),
-    savedPlaceForget: document.getElementById("saved-place-forget"),
+    copyLinkBtn: document.getElementById("copy-link-btn"),
     unitsToggle: document.getElementById("units-toggle"),
     manualFallback: document.getElementById("manual-fallback"),
     fallbackMessage: document.getElementById("fallback-message"),
@@ -318,7 +317,7 @@
     if (currentData && currentData.water_types_pending) {
       text = "Still working out which of these " + inRange + " are ocean beaches — the list will fill in shortly.";
     } else if (counts.ocean === 0 && waterFilters.ocean && !waterFilters.lake && !waterFilters.river && !waterFilters.other) {
-      text = "None of the " + inRange + " beaches in range is on the ocean.";
+      text = "None of the " + inRange + (inRange === 1 ? " beach" : " beaches") + " in range is on the ocean.";
     } else {
       text = "The water-type filter hides all " + inRange + " beaches in range.";
     }
@@ -613,9 +612,10 @@
     showOnly(els.errorPanel);
   }
 
-  function search(lat, lon, label, countryCode) {
+  function search(lat, lon, label, countryCode, source) {
     lastCoords = { lat: lat, lon: lon };
     lastPlaceLabel = label || null;
+    writeUrlState(lat, lon, label, source);
     chooseUnits(lat, lon, countryCode || null);
     showOnly(els.loadingPanel);
     startLoadingMessages();
@@ -658,8 +658,12 @@
     els.manualFallback.classList.remove("hidden");
   }
 
-  function requestGeolocation() {
+  // `fallback` (optional): coordinates from a previous browser-position
+  // search in the URL, used if the browser can't answer this time.
+  function requestGeolocation(fallback) {
+    if (fallback && (!fallback.lat && fallback.lat !== 0)) fallback = null;
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      if (fallback) { search(fallback.lat, fallback.lon, null, null, "me"); return; }
       showManualFallback("Your browser doesn't support location lookup. Enter a latitude/longitude below, or pick a city.");
       return;
     }
@@ -671,7 +675,7 @@
 
     navigator.geolocation.getCurrentPosition(
       function (position) {
-        search(position.coords.latitude, position.coords.longitude);
+        search(position.coords.latitude, position.coords.longitude, null, null, "me");
       },
       function (error) {
         var message;
@@ -685,48 +689,67 @@
           default:
             message = "Couldn't determine your location. Search a place above, enter coordinates below, or pick a city.";
         }
+        if (fallback) {
+          // The browser wouldn't answer, but the link carried the last
+          // position it gave: search from there rather than stall.
+          search(fallback.lat, fallback.lon, null, null, "me");
+          return;
+        }
         // Return to location panel before showing the fallback message
         showOnly(els.locationPanel);
         showManualFallback(message);
+        try { els.placeInput.focus(); } catch (e) {}
       },
       { timeout: 20000, maximumAge: 10 * 60 * 1000, enableHighAccuracy: false }
     );
   }
 
-  // --- place search + remembered place (v0.5) ---
+  // --- the location lives in the URL (v0.7) ---
 
-  function loadSavedPlace() {
+  function readUrlState() {
+    var q;
     try {
-      var raw = window.localStorage.getItem(SAVED_PLACE_KEY);
-      if (!raw) return null;
-      var p = JSON.parse(raw);
-      if (typeof p.lat !== "number" || typeof p.lon !== "number" || !p.label) return null;
-      return p;
+      q = new URLSearchParams(window.location.search);
     } catch (e) {
-      return null;
+      return {};
     }
+    var lat = parseFloat(q.get("lat"));
+    var lon = parseFloat(q.get("lon"));
+    return {
+      lat: isFinite(lat) ? lat : null,
+      lon: isFinite(lon) ? lon : null,
+      label: q.get("label") || null,
+      place: q.get("place") || null,
+      src: q.get("src") || null,
+    };
   }
 
-  function savePlace(place) {
+  // Keep the address bar as the one record of what is being searched:
+  // a chosen place is ?lat=&lon=&label=; the browser's own position is
+  // ?lat=&lon=&src=me, which asks the browser again on reload (falling
+  // back to those coordinates only if it can't answer).
+  function writeUrlState(lat, lon, label, source) {
     try {
-      window.localStorage.setItem(SAVED_PLACE_KEY, JSON.stringify(place));
-    } catch (e) {
-      /* private mode or storage blocked: the search still works, it just isn't remembered */
-    }
-    renderSavedPlace();
-  }
-
-  function forgetPlace() {
-    try {
-      window.localStorage.removeItem(SAVED_PLACE_KEY);
+      var q = new URLSearchParams();
+      q.set("lat", Number(lat).toFixed(4));
+      q.set("lon", Number(lon).toFixed(4));
+      if (source === "me") q.set("src", "me");
+      else if (label) q.set("label", label);
+      window.history.replaceState(null, "", window.location.pathname + "?" + q.toString());
     } catch (e) {}
-    renderSavedPlace();
   }
 
-  function renderSavedPlace() {
-    var p = loadSavedPlace();
-    els.savedPlace.classList.toggle("hidden", !p);
-    if (p) els.savedPlaceLabel.textContent = p.label;
+  function copyLink() {
+    var url = window.location.href;
+    var done = function () {
+      els.copyLinkBtn.textContent = "Link copied";
+      setTimeout(function () { els.copyLinkBtn.textContent = "Copy link"; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { window.prompt("Copy this link:", url); });
+    } else {
+      window.prompt("Copy this link:", url);
+    }
   }
 
   function placeLabel(r) {
@@ -737,7 +760,6 @@
   }
 
   function usePlace(place) {
-    if (els.rememberPlace.checked) savePlace(place);
     search(place.lat, place.lon, place.label, place.cc || null);
   }
 
@@ -813,11 +835,7 @@
     if (q.length < 2) return;
     geocode(q);
   });
-  els.savedPlaceUse.addEventListener("click", function () {
-    var p = loadSavedPlace();
-    if (p) search(p.lat, p.lon, p.label, p.cc || null);
-  });
-  els.savedPlaceForget.addEventListener("click", forgetPlace);
+  els.copyLinkBtn.addEventListener("click", copyLink);
   els.unitsToggle.addEventListener("click", function () {
     useMiles = !useMiles;
     els.unitsToggle.textContent = useMiles ? "Show km" : "Show miles";
@@ -873,19 +891,18 @@
   });
 
   buildExampleCityButtons();
-  renderSavedPlace();
 
-  // A remembered place searches straight away. Otherwise (v0.6) show the
-  // place search at once rather than sitting on a browser position request
-  // that, on a desktop without GPS, may take 10 s to fail -- "Use my
-  // location" is right there for anyone who wants it.
-  var saved = loadSavedPlace();
-  if (saved) {
-    els.placeInput.value = saved.label;
-    search(saved.lat, saved.lon, saved.label, saved.cc || null);
+  // Startup (v0.7): the URL decides. A place name geocodes; explicit
+  // coordinates search as they are; otherwise -- nothing set, or the last
+  // search was the browser's own position -- ask for the current location.
+  var urlState = readUrlState();
+  if (urlState.place) {
+    els.placeInput.value = urlState.place;
+    geocode(urlState.place);
+  } else if (urlState.lat != null && urlState.lon != null && urlState.src !== "me") {
+    if (urlState.label) els.placeInput.value = urlState.label;
+    search(urlState.lat, urlState.lon, urlState.label, null);
   } else {
-    showOnly(els.locationPanel);
-    showManualFallback("Type a town above and tap Find (tick the box to remember it), use your location, or pick a city.");
-    try { els.placeInput.focus(); } catch (e) {}
+    requestGeolocation(urlState.src === "me" ? urlState : null);
   }
 })();

@@ -26,18 +26,10 @@
           <input type="text" id="place-input" placeholder="Town or place, e.g. Newport OR" />
           <button type="submit" class="btn btn-primary">Find</button>
         </div>
-        <label class="remember-label">
-          <input type="checkbox" id="remember-place" checked />
-          Remember this place on this device (skips the location prompt next time)
-        </label>
+        <p class="hint url-hint">The place you search goes into this page's address, so bookmark or share the link to come back to it. With nothing in the address, the page uses your current location.</p>
         <div id="place-results" class="place-results hidden"></div>
         <p id="place-message" class="fallback-message hidden"></p>
       </form>
-      <div id="saved-place" class="saved-place hidden">
-        Saved place: <strong id="saved-place-label"></strong>
-        <button id="saved-place-use" type="button" class="btn btn-secondary">Use it</button>
-        <button id="saved-place-forget" type="button" class="btn btn-link">Forget</button>
-      </div>
       <div id="location-status" class="location-status">
         <button id="use-my-location" type="button" class="btn btn-secondary">
           Use my location
@@ -92,6 +84,7 @@
         <span id="results-summary"></span>
         <button id="units-toggle" type="button" class="btn btn-link">Show miles</button>
         <button id="change-location-btn" type="button" class="btn btn-link">Change location</button>
+        <button id="copy-link-btn" type="button" class="btn btn-link">Copy link</button>
       </div>
 
       <div class="results-controls">
