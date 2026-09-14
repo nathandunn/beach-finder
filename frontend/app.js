@@ -1,8 +1,9 @@
 /* Beach Finder frontend -- plain JS, no build step, no dependencies.
  *
- * Flow (v0.7): the page URL names the location -- ?lat=&lon=&label= for a
- * chosen place, ?place= for a name to geocode, ?src=me for the browser's own
- * position; with nothing set, the current location is the default. Every
+ * Flow (v0.7): the page URL names the location -- ?lat=&lon= (with &label=
+ * for a chosen place) opens straight to results, ?place= geocodes a name;
+ * only a bare URL detects the current location, and the position found is
+ * written back into the URL. Every
  * search rewrites the URL (history.replaceState) so the address bar is the
  * bookmark. Then fetch /api/beaches -> render a ranked list. Geolocation
  * denial or failure falls back to the place search (Open-Meteo geocoder) and
@@ -29,9 +30,9 @@
   var API_BASE = "/api";
   // Place-name search: Open-Meteo's free geocoder (no key, CORS-enabled).
   var GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
-  // v0.7: the search location lives in the page URL (?lat=&lon=&label= for a
-  // chosen place, ?src=me for the browser's own position, ?place= to
-  // geocode a name). Nothing in the URL means "current location".
+  // v0.7: the search location lives in the page URL (?lat=&lon=, &label=
+  // for a chosen place, ?place= to geocode a name). Coordinates in the URL
+  // open straight to results; nothing in the URL means "current location".
 
   var EXAMPLE_CITIES = [
     { label: "Newport, OR", lat: 44.6368, lon: -124.0535 },
@@ -658,12 +659,8 @@
     els.manualFallback.classList.remove("hidden");
   }
 
-  // `fallback` (optional): coordinates from a previous browser-position
-  // search in the URL, used if the browser can't answer this time.
-  function requestGeolocation(fallback) {
-    if (fallback && (!fallback.lat && fallback.lat !== 0)) fallback = null;
+  function requestGeolocation() {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      if (fallback) { search(fallback.lat, fallback.lon, null, null, "me"); return; }
       showManualFallback("Your browser doesn't support location lookup. Enter a latitude/longitude below, or pick a city.");
       return;
     }
@@ -688,12 +685,6 @@
             break;
           default:
             message = "Couldn't determine your location. Search a place above, enter coordinates below, or pick a city.";
-        }
-        if (fallback) {
-          // The browser wouldn't answer, but the link carried the last
-          // position it gave: search from there rather than stall.
-          search(fallback.lat, fallback.lon, null, null, "me");
-          return;
         }
         // Return to location panel before showing the fallback message
         showOnly(els.locationPanel);
@@ -720,21 +711,18 @@
       lon: isFinite(lon) ? lon : null,
       label: q.get("label") || null,
       place: q.get("place") || null,
-      src: q.get("src") || null,
     };
   }
 
   // Keep the address bar as the one record of what is being searched:
-  // a chosen place is ?lat=&lon=&label=; the browser's own position is
-  // ?lat=&lon=&src=me, which asks the browser again on reload (falling
-  // back to those coordinates only if it can't answer).
+  // ?lat=&lon= (plus &label= for a named place). Any link with coordinates
+  // opens straight to results; only a bare link detects the location.
   function writeUrlState(lat, lon, label, source) {
     try {
       var q = new URLSearchParams();
       q.set("lat", Number(lat).toFixed(4));
       q.set("lon", Number(lon).toFixed(4));
-      if (source === "me") q.set("src", "me");
-      else if (label) q.set("label", label);
+      if (label && source !== "me") q.set("label", label);
       window.history.replaceState(null, "", window.location.pathname + "?" + q.toString());
     } catch (e) {}
   }
@@ -892,17 +880,18 @@
 
   buildExampleCityButtons();
 
-  // Startup (v0.7): the URL decides. A place name geocodes; explicit
-  // coordinates search as they are; otherwise -- nothing set, or the last
-  // search was the browser's own position -- ask for the current location.
+  // Startup (v0.7): the URL decides. A place name geocodes; coordinates
+  // search as they are; only an empty URL asks for the current location.
   var urlState = readUrlState();
   if (urlState.place) {
     els.placeInput.value = urlState.place;
     geocode(urlState.place);
-  } else if (urlState.lat != null && urlState.lon != null && urlState.src !== "me") {
+  } else if (urlState.lat != null && urlState.lon != null) {
+    // Coordinates in the link: straight to results, no browser prompt.
     if (urlState.label) els.placeInput.value = urlState.label;
     search(urlState.lat, urlState.lon, urlState.label, null);
   } else {
-    requestGeolocation(urlState.src === "me" ? urlState : null);
+    // Nothing specified: detect the current location.
+    requestGeolocation();
   }
 })();
