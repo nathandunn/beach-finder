@@ -50,6 +50,18 @@ TILE_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
 # Weather changes minute to minute; cache briefly per the spec (~30 min).
 WEATHER_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
 
+# v0.6: the whole answer for a place is kept and served as-is until it is
+# this old; only then is the place fetched again, and every stale entry is
+# expelled on that same fetch-and-check pass (see app/results_store.py).
+RESULTS_TTL_SECONDS = 30 * 60  # 30 minutes
+# Coordinates rounded to this many decimals form the place key
+# (2 -> ~1.1 km): a place searched by name always lands on the same key.
+RESULTS_COORD_PRECISION = 2
+# Where the store is written so a container restart keeps it. Empty/unset
+# means memory only.
+import os as _os
+RESULTS_PATH = _os.environ.get("BEACH_RESULTS_PATH", "/data/results.json")
+
 # Geographic tile size in degrees used as the cache key granularity for
 # Overpass results. ~0.25 degrees is roughly 25-28km at mid-latitudes --
 # coarse enough that nearby users share cache entries, fine enough that the

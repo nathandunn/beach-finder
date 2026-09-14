@@ -60,6 +60,13 @@ class BeachesResponse(BaseModel):
     searched_radius_km: float
     bands_used_km: list[float]
     ceiling_reached: bool
+    # v0.6 freshness (filled in by the results store): the answer for a
+    # place is kept and served until it is stale_after_seconds old.
+    cached: bool = False
+    fetched_at: str | None = None
+    age_seconds: int = 0
+    stale_after_seconds: int = 0
+    water_types_pending: bool = False
 
 
 class HealthResponse(BaseModel):

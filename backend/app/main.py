@@ -7,6 +7,8 @@ help).
 """
 from __future__ import annotations
 
+import asyncio
+import datetime as _dt
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
@@ -24,6 +26,7 @@ from .schemas import (
     HourlyForecastOut,
     ScoresOut,
 )
+from .results_store import ResultsStore, place_key
 from .service import BeachFinderService
 from .watertype import CachingWaterTypeClient, HttpWaterTypeClient
 from .weather import CachingWeatherClient, HttpWeatherClient
@@ -44,6 +47,11 @@ async def lifespan(app: FastAPI):
     water_type_client = CachingWaterTypeClient(water_type_http, water_type_cache, KeyedLock())
 
     app.state.service = BeachFinderService(search_client, weather_client, water_type_client)
+    # v0.6: whole answers per place, served until 30 minutes old.
+    results_store = ResultsStore()
+    results_store.load()
+    app.state.results_store = results_store
+    app.state.background = set()
     app.state.tile_cache = tile_cache
     app.state.weather_cache = weather_cache
     app.state.water_type_cache = water_type_cache
@@ -71,14 +79,71 @@ async def health() -> HealthResponse:
     return HealthResponse()
 
 
+def _iso(ts: float) -> str:
+    return _dt.datetime.fromtimestamp(ts, tz=_dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _with_freshness(payload: dict, entry, store: ResultsStore, cached: bool) -> dict:
+    out = dict(payload)
+    out["cached"] = cached
+    out["fetched_at"] = _iso(entry.fetched_at)
+    out["age_seconds"] = int(store.age_seconds(entry))
+    out["stale_after_seconds"] = int(store.ttl_seconds)
+    out["water_types_pending"] = not entry.complete
+    return out
+
+
 @app.get("/api/beaches", response_model=BeachesResponse)
 async def get_beaches(
     lat: float = Query(..., ge=-90, le=90, description="Latitude in decimal degrees"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude in decimal degrees"),
-) -> BeachesResponse:
+) -> dict:
+    """Fetch-and-check: expel stale answers, serve a fresh stored one, or
+    fetch, store and serve. Only this path ever touches the store."""
     service: BeachFinderService = app.state.service
-    result = await service.find_beaches(lat, lon)
+    store: ResultsStore = app.state.results_store
+    key = place_key(lat, lon)
 
+    entry = store.get(key)  # expels every stale entry first
+    if entry is not None:
+        return _with_freshness(entry.payload, entry, store, cached=True)
+
+    lock = await store.lock(key)
+    async with lock:
+        entry = store.get(key)
+        if entry is not None:
+            return _with_freshness(entry.payload, entry, store, cached=True)
+
+        result = await service.find_beaches(lat, lon)
+        payload = _build_response(result).model_dump()
+        pending = result.pending_water_types
+        entry = store.put(key, payload, complete=pending is None)
+
+    if pending is not None:
+        _patch_later(key, pending)
+
+    return _with_freshness(entry.payload, entry, store, cached=False)
+
+
+def _patch_later(key: str, pending) -> None:
+    """When the late water-type answer arrives, write it onto the stored
+    entry (its fetched_at is untouched -- the weather is no fresher)."""
+    store: ResultsStore = app.state.results_store
+
+    async def waiter() -> None:
+        try:
+            water_types = await pending
+        except Exception:
+            return
+        if water_types:
+            store.patch_water_types(key, water_types)
+
+    task = asyncio.ensure_future(waiter())
+    app.state.background.add(task)
+    task.add_done_callback(app.state.background.discard)
+
+
+def _build_response(result) -> BeachesResponse:
     beaches_out = [
         BeachOut(
             id=b.osm_id,

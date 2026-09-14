@@ -824,3 +824,21 @@ body {
 .place-results button { text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #b8c4cc; border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.95rem; }
 .place-results button:hover { background: #eef5f9; }
 .saved-place { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.95rem; }
+
+/* v0.6: freshness line and the "everything filtered out" hint */
+.freshness-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7a86;
+}
+.filter-note {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #f2d59b;
+  font-size: 0.9rem;
+}
+.filter-note button {
+  margin-left: 0.4rem;
+}

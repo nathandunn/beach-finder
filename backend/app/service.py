@@ -120,6 +120,7 @@ class BeachFinderService:
         # Weather is in; give the (Overpass-backed, often slow) water-type
         # query a short grace period, then answer with "unknown" rather
         # than make the user wait on a flaky upstream.
+        pending = None
         try:
             if self._water_type_grace_seconds is None:
                 water_types = await water_types_task
@@ -129,8 +130,10 @@ class BeachFinderService:
                 )
         except asyncio.TimeoutError:
             water_types = {}
-            # Let it finish in the background so its result lands in the
-            # cache for the next search of this coast.
+            # Let it finish in the background: its result lands in the
+            # per-beach cache and the caller gets the task to patch its
+            # stored answer when it completes.
+            pending = water_types_task
             water_types_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except Exception:
             water_types = {}
@@ -145,4 +148,5 @@ class BeachFinderService:
             bands_used_km=outcome.bands_used_km,
             ceiling_reached=outcome.ceiling_reached,
             target_reached=outcome.target_reached,
+            pending_water_types=pending,
         )

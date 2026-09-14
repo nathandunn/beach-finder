@@ -6,6 +6,8 @@ schemas.py are the API-facing shapes.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass, field
 
 
@@ -101,3 +103,7 @@ class FindBeachesResult:
     bands_used_km: list[float] = field(default_factory=list)
     ceiling_reached: bool = False
     target_reached: bool = False
+    # v0.6: when the water-type query outlived its grace period the answer
+    # went out with "unknown" types; this is the still-running task
+    # (osm_id -> type) so the caller can patch its stored copy later.
+    pending_water_types: Any = None

@@ -40,6 +40,7 @@ beaches, at most a few hundred features per search) is trivial.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -128,14 +129,70 @@ def classify_beaches(
     for beach in beaches:
         tiers: set[str] = set()
         for feature in features:
-            pts = feature.points or ((feature.lat, feature.lon),)
-            if all(haversine_km(beach.lat, beach.lon, la, lo) > radius_km for la, lo in pts):
+            if not feature_within(beach.lat, beach.lon, feature, radius_km):
                 continue
             tier = classify_element(feature.tags)
             if tier is not None:
                 tiers.add(tier)
         result[beach.osm_id] = _combine(tiers)
     return result
+
+
+def feature_within(lat: float, lon: float, feature: WaterFeature, radius_km: float) -> bool:
+    """Is (lat, lon) within radius_km of the feature -- any vertex, or (for
+    ways) any *segment* between consecutive vertices. Coastline ways drawn
+    along a straight shore can have vertices a kilometre apart, so a beach
+    sitting squarely on the line between two of them must still count."""
+    pts = feature.points or ((feature.lat, feature.lon),)
+    for la, lo in pts:
+        if haversine_km(lat, lon, la, lo) <= radius_km:
+            return True
+    if len(pts) < 2:
+        return False
+    # Local equirectangular projection (km) for the segment test; fine at
+    # the few-hundred-metre scale this is used at.
+    cos_lat = math.cos(math.radians(lat))
+    px, py = 0.0, 0.0
+    prev = None
+    for la, lo in pts:
+        x = (lo - lon) * 111.0 * cos_lat
+        y = (la - lat) * 111.0
+        if prev is not None:
+            ax, ay = prev
+            dx, dy = x - ax, y - ay
+            seg = dx * dx + dy * dy
+            if seg > 0:
+                t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg))
+                cx, cy = ax + t * dx, ay + t * dy
+                if math.hypot(cx - px, cy - py) <= radius_km:
+                    return True
+        prev = (x, y)
+    return False
+
+
+def build_coastline_query(
+    beaches: list[BeachElement],
+    margin_m: int = WATER_TYPE_PROBE_RADIUS_M,
+    timeout_s: int = int(OVERPASS_TIMEOUT_SECONDS),
+) -> str:
+    """One bounding-box query for every natural=coastline way near the
+    candidate beaches (their extent plus the probe radius). Measured live
+    2026-09-14: 1-6 s and 0.2-2 MB for a 64 km box, where the per-beach
+    `around:` union took 9-15 s -- and this is the clause that decides
+    "ocean", which is what the default filter shows."""
+    if not beaches:
+        return ""
+    lats = [b.lat for b in beaches]
+    lons = [b.lon for b in beaches]
+    dlat = margin_m / 111000.0
+    mid = (max(lats) + min(lats)) / 2.0
+    dlon = margin_m / (111000.0 * max(math.cos(math.radians(mid)), 0.01))
+    south, north = max(min(lats) - dlat, -90.0), min(max(lats) + dlat, 90.0)
+    west, east = max(min(lons) - dlon, -180.0), min(max(lons) + dlon, 180.0)
+    return (
+        f"[out:json][timeout:{timeout_s}][bbox:{south:.5f},{west:.5f},{north:.5f},{east:.5f}];\n"
+        'way["natural"="coastline"];\nout geom;'
+    )
 
 
 # --- Batched query construction ---------------------------------------------
@@ -145,6 +202,7 @@ def build_water_type_query(
     beaches: list[BeachElement],
     radius_m: int = WATER_TYPE_PROBE_RADIUS_M,
     timeout_s: int = int(OVERPASS_TIMEOUT_SECONDS),
+    include_coastline: bool = True,
 ) -> str:
     """ONE batched Overpass query covering every beach found this search:
     a union of `around:{radius_m}` clauses, four tag patterns per beach
@@ -175,7 +233,8 @@ def build_water_type_query(
     clauses: list[str] = []
     for beach in beaches:
         lat, lon = beach.lat, beach.lon
-        clauses.append(f'  nwr["natural"="coastline"](around:{radius_m},{lat},{lon});')
+        if include_coastline:
+            clauses.append(f'  nwr["natural"="coastline"](around:{radius_m},{lat},{lon});')
         clauses.append(f'  nwr["water"~"^(lake|reservoir|pond)$"](around:{radius_m},{lat},{lon});')
         clauses.append(f'  nwr["waterway"~"^(river|riverbank|stream)$"](around:{radius_m},{lat},{lon});')
         clauses.append(f'  nwr["water"="river"](around:{radius_m},{lat},{lon});')
@@ -272,15 +331,42 @@ class HttpWaterTypeClient:
         if self._owns_client and self._client is not None:
             await self._client.aclose()
 
-    async def fetch_features(self, beaches: list[BeachElement]) -> list[WaterFeature]:
+    async def fetch_features(self, beaches: list[BeachElement]) -> list[WaterFeature] | None:
+        """Two steps: a cheap bounding-box query for coastline (decides
+        "ocean"), then the per-beach lake/river probe only for beaches the
+        coastline did not already claim. Returns None when *both* queries
+        failed outright, so the caller can leave those beaches uncached
+        rather than remembering "unknown" for a month."""
         if not beaches:
             return []
-        query = build_water_type_query(beaches)
         client = await self._get_client()
-        payload = await post_overpass_query(client, query)
-        if payload is None:
-            return []
-        return parse_water_features(payload)
+        features: list[WaterFeature] = []
+        failed = 0
+
+        coast_payload = await post_overpass_query(client, build_coastline_query(beaches))
+        if coast_payload is None:
+            failed += 1
+        else:
+            features.extend(parse_water_features(coast_payload))
+
+        radius_km = WATER_TYPE_PROBE_RADIUS_M / 1000.0
+        inland = [
+            b for b in beaches
+            if not any(feature_within(b.lat, b.lon, f, radius_km) for f in features)
+        ]
+        if inland:
+            query = build_water_type_query(inland, include_coastline=coast_payload is None)
+            payload = await post_overpass_query(client, query)
+            if payload is None:
+                failed += 1
+            else:
+                features.extend(parse_water_features(payload))
+        elif coast_payload is None:
+            return None
+
+        if failed and not features:
+            return None
+        return features
 
 
 def water_type_cache_key(lat: float, lon: float, precision: int) -> tuple[float, float]:
@@ -360,10 +446,16 @@ class CachingWaterTypeClient:
                 return result
 
             features = await self._inner.fetch_features(still_missing)
-            # An empty feature list (query failed, or genuinely nothing
-            # nearby) classifies every still-missing beach as "unknown" --
-            # classify_beaches never raises, so a total query failure
-            # degrades to "unknown" rather than sinking the search.
+            if features is None:
+                # Every query failed: answer "unknown" for now but cache
+                # nothing, so the next search asks again instead of
+                # remembering a failure for a month.
+                for beach in still_missing:
+                    result[beach.osm_id] = "unknown"
+                return result
+            # An empty feature list (genuinely nothing nearby) classifies
+            # every still-missing beach as "unknown" -- classify_beaches
+            # never raises.
             classified = classify_beaches(still_missing, features)
 
             for beach in still_missing:

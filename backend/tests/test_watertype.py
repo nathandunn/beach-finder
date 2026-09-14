@@ -250,7 +250,7 @@ class FakeWaterTypeHttpClient:
         ids = [b.osm_id for b in beaches]
         self.calls.append(ids)
         if self.fail:
-            return []  # mirrors HttpWaterTypeClient's failure contract
+            return None  # mirrors HttpWaterTypeClient's failure contract (v0.6)
         key = tuple(sorted(ids))
         return self._responses.get(key, [])
 
@@ -360,13 +360,25 @@ class TestCachingWaterTypeClient:
         result = await client.classify(beaches)
         assert result == {"way/1": "unknown", "way/2": "unknown"}
 
-    async def test_failed_result_is_still_cached_as_unknown(self):
-        # A failed lookup shouldn't be retried on every single request --
-        # "unknown" gets cached like any other classification, honoring
-        # the same TTL.
+    async def test_failed_result_is_not_cached(self):
+        # v0.6: a failed lookup (Overpass down) must NOT be remembered as
+        # "unknown" for a month -- the next search asks again. (Found
+        # live 2026-09-14: every beach on a coast stuck at unknown.)
         b1 = beach("way/1", 44.6, -124.0)
         cache = TTLCache(ttl_seconds=1000)
         inner = FakeWaterTypeHttpClient(fail=True)
+        client = CachingWaterTypeClient(inner, cache, KeyedLock())
+
+        await client.classify([b1])
+        await client.classify([b1])
+        assert len(inner.calls) == 2
+
+    async def test_genuinely_empty_result_is_cached_as_unknown(self):
+        # Nothing nearby (an empty feature list, not a failure) is a real
+        # answer and is cached like any other.
+        b1 = beach("way/1", 44.6, -124.0)
+        cache = TTLCache(ttl_seconds=1000)
+        inner = FakeWaterTypeHttpClient()
         client = CachingWaterTypeClient(inner, cache, KeyedLock())
 
         await client.classify([b1])
@@ -398,3 +410,36 @@ class TestLongWayAttribution:
         far_no_geom = WaterFeature(lat=37.4, lon=-122.9, tags={"natural": "coastline"})
         result = classify_beaches([b], [far_no_geom])
         assert result["way/1"] == "unknown"
+
+
+class TestSegmentProximity:
+    """v0.6: a beach on the straight line between two far-apart coastline
+    vertices still counts as next to that coastline."""
+
+    def test_point_between_distant_vertices_is_within(self):
+        from app.watertype import feature_within
+
+        # Two vertices 2 km apart east-west; beach 100 m south of the midpoint.
+        f = WaterFeature(lat=44.6, lon=-124.0, tags={"natural": "coastline"}, points=((44.6, -124.0127), (44.6, -123.9873)))
+        assert feature_within(44.5991, -124.0, f, 0.4)
+
+    def test_point_far_from_segment_is_not_within(self):
+        from app.watertype import feature_within
+
+        f = WaterFeature(lat=44.6, lon=-124.0, tags={"natural": "coastline"}, points=((44.6, -124.0127), (44.6, -123.9873)))
+        assert not feature_within(44.59, -124.0, f, 0.4)
+
+
+class TestCoastlineQuery:
+    def test_bbox_covers_beaches_plus_margin(self):
+        from app.watertype import build_coastline_query
+
+        q = build_coastline_query([beach("way/1", 44.6, -124.0), beach("way/2", 44.7, -123.9)], margin_m=400)
+        assert '[bbox:' in q and 'way["natural"="coastline"]' in q and "out geom" in q
+        south, west, north, east = [float(x) for x in q.split("[bbox:")[1].split("]")[0].split(",")]
+        assert south < 44.6 < 44.7 < north and west < -124.0 < -123.9 < east
+
+    def test_empty_list_is_empty_query(self):
+        from app.watertype import build_coastline_query
+
+        assert build_coastline_query([]) == ""

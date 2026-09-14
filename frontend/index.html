@@ -121,11 +121,15 @@
           <span class="water-filter-label">Water type:</span>
           <div class="water-chips">
             <button type="button" class="water-chip active" id="chip-ocean" data-water-type="ocean">&#127754; Ocean</button>
-            <button type="button" class="water-chip active" id="chip-lake" data-water-type="lake">&#127966;&#65039; Lake</button>
-            <button type="button" class="water-chip active" id="chip-river" data-water-type="river">&#127957; River</button>
+            <button type="button" class="water-chip" id="chip-lake" data-water-type="lake">&#127966;&#65039; Lake</button>
+            <button type="button" class="water-chip" id="chip-river" data-water-type="river">&#127957; River</button>
+            <button type="button" class="water-chip" id="chip-other" data-water-type="other">&#10067; Other</button>
           </div>
         </div>
       </div>
+
+      <p id="freshness-note" class="freshness-note"></p>
+      <p id="filter-note" class="filter-note hidden"></p>
 
       <ul id="beach-list" class="beach-list"></ul>
     </section>
