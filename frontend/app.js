@@ -680,16 +680,16 @@
             message = "Location access was denied. No problem — enter coordinates below, or pick a city.";
             break;
           case error.TIMEOUT:
-            message = "Location lookup timed out. Enter coordinates below, or pick a city.";
+            message = "The browser didn't come back with a position (desktops without GPS often don't). Search a place above, enter coordinates below, or pick a city.";
             break;
           default:
-            message = "Couldn't determine your location. Enter coordinates below, or pick a city.";
+            message = "Couldn't determine your location. Search a place above, enter coordinates below, or pick a city.";
         }
         // Return to location panel before showing the fallback message
         showOnly(els.locationPanel);
         showManualFallback(message);
       },
-      { timeout: 10000, maximumAge: 5 * 60 * 1000 }
+      { timeout: 20000, maximumAge: 10 * 60 * 1000, enableHighAccuracy: false }
     );
   }
 
@@ -875,14 +875,17 @@
   buildExampleCityButtons();
   renderSavedPlace();
 
-  // A remembered place skips the location prompt entirely; otherwise ask for
-  // geolocation on load, per spec -- the place search and manual fallback stay
-  // available underneath in case it's denied.
+  // A remembered place searches straight away. Otherwise (v0.6) show the
+  // place search at once rather than sitting on a browser position request
+  // that, on a desktop without GPS, may take 10 s to fail -- "Use my
+  // location" is right there for anyone who wants it.
   var saved = loadSavedPlace();
   if (saved) {
     els.placeInput.value = saved.label;
     search(saved.lat, saved.lon, saved.label, saved.cc || null);
   } else {
-    requestGeolocation();
+    showOnly(els.locationPanel);
+    showManualFallback("Type a town above and tap Find (tick the box to remember it), use your location, or pick a city.");
+    try { els.placeInput.focus(); } catch (e) {}
   }
 })();
