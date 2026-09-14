@@ -21,18 +21,36 @@ from .config import (
     OVERPASS_USER_AGENT,
     TILE_SIZE_DEG,
 )
+from .geo import haversine_km
 from .models import BeachElement
 
 
+def bounding_box(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
+    """(south, west, north, east) of the square that contains the circle of
+    radius_km around (lat, lon). Clamped to valid latitudes; longitudes are
+    left to wrap naturally (Overpass accepts west > east across the
+    antimeridian)."""
+    dlat = radius_km / 111.0
+    cos_lat = max(math.cos(math.radians(lat)), 0.01)
+    dlon = min(radius_km / (111.0 * cos_lat), 180.0)
+    south = max(lat - dlat, -90.0)
+    north = min(lat + dlat, 90.0)
+    west = ((lon - dlon + 180.0) % 360.0) - 180.0 if dlon < 180.0 else -180.0
+    east = ((lon + dlon + 180.0) % 360.0) - 180.0 if dlon < 180.0 else 180.0
+    return (round(south, 5), round(west, 5), round(north, 5), round(east, 5))
+
+
 def build_overpass_query(lat: float, lon: float, radius_km: float) -> str:
-    radius_m = int(radius_km * 1000)
+    """Bounding-box query for natural=beach. A bbox filter is far cheaper
+    for Overpass than `around:` -- measured live (2026-09-14) the main
+    overpass-api.de instance answered the bbox form in 1-3 s while 504-ing
+    the identical `around:` form, and the corner overshoot is trimmed
+    client-side by `HttpOverpassClient.search`."""
+    south, west, north, east = bounding_box(lat, lon, radius_km)
     return (
-        f"[out:json][timeout:{int(OVERPASS_TIMEOUT_SECONDS)}];\n"
-        "(\n"
-        f'  node["natural"="beach"](around:{radius_m},{lat},{lon});\n'
-        f'  way["natural"="beach"](around:{radius_m},{lat},{lon});\n'
-        f'  relation["natural"="beach"](around:{radius_m},{lat},{lon});\n'
-        ");\n"
+        f"[out:json][timeout:{int(OVERPASS_TIMEOUT_SECONDS)}]"
+        f"[bbox:{south},{west},{north},{east}];\n"
+        '(\n  nwr["natural"="beach"];\n);\n'
         "out center;"
     )
 
@@ -205,7 +223,12 @@ class HttpOverpassClient:
         payload = await post_overpass_query(client, query)
         if payload is None:
             return []
-        return parse_overpass_response(payload)
+        # The bbox is a square around the circle; trim the corners so a
+        # band means what it says.
+        return [
+            b for b in parse_overpass_response(payload)
+            if haversine_km(lat, lon, b.lat, b.lon) <= radius_km
+        ]
 
 
 def tile_key(lat: float, lon: float, tile_size_deg: float = TILE_SIZE_DEG) -> tuple[int, int]:

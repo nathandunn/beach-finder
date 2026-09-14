@@ -9,7 +9,9 @@ from .config import (
     DEFAULT_RADIUS_BANDS_KM,
     DEFAULT_TARGET_COUNT,
     HOURLY_FORECAST_DISPLAY_HOURS,
+    MAX_CANDIDATES,
     MAX_RADIUS_KM,
+    WATER_TYPE_GRACE_SECONDS,
     WEATHER_FETCH_CONCURRENCY,
 )
 from .forecast import compute_time_based_scores
@@ -41,11 +43,15 @@ class BeachFinderService:
         target_count: int = DEFAULT_TARGET_COUNT,
         bands_km: list[float] | None = None,
         ceiling_km: float = MAX_RADIUS_KM,
+        max_candidates: int = MAX_CANDIDATES,
+        water_type_grace_seconds: float | None = WATER_TYPE_GRACE_SECONDS,
     ):
         self._search_client = search_client
         self._weather_client = weather_client
         self._water_type_client = water_type_client or _NullWaterTypeClient()
         self._target_count = target_count
+        self._max_candidates = max(target_count, max_candidates)
+        self._water_type_grace_seconds = water_type_grace_seconds
         self._bands_km = bands_km
         self._ceiling_km = ceiling_km
         self._weather_semaphore = asyncio.Semaphore(WEATHER_FETCH_CONCURRENCY)
@@ -67,7 +73,14 @@ class BeachFinderService:
         # scored beaches after both finish. A search-failure here (or an
         # empty beach list) resolves to "unknown" for everyone, per spec,
         # never sinking the whole search.
-        water_types_task = asyncio.ensure_future(self._water_type_client.classify(outcome.beaches))
+        # A wide band can hand back hundreds of beaches; only the nearest
+        # candidates are worth a weather fetch and a water-type probe.
+        candidates = sorted(
+            outcome.beaches,
+            key=lambda e: haversine_km(lat, lon, e.lat, e.lon),
+        )[: self._max_candidates]
+
+        water_types_task = asyncio.ensure_future(self._water_type_client.classify(candidates))
 
         async def score_one(element: BeachElement) -> ScoredBeach:
             # Bound how many weather fetches are in flight at once -- polite
@@ -99,12 +112,28 @@ class BeachFinderService:
                 hourly_forecast=hourly_forecast,
             )
 
-        if outcome.beaches:
-            scored = list(await asyncio.gather(*(score_one(e) for e in outcome.beaches)))
+        if candidates:
+            scored = list(await asyncio.gather(*(score_one(e) for e in candidates)))
         else:
             scored = []
 
-        water_types = await water_types_task
+        # Weather is in; give the (Overpass-backed, often slow) water-type
+        # query a short grace period, then answer with "unknown" rather
+        # than make the user wait on a flaky upstream.
+        try:
+            if self._water_type_grace_seconds is None:
+                water_types = await water_types_task
+            else:
+                water_types = await asyncio.wait_for(
+                    asyncio.shield(water_types_task), self._water_type_grace_seconds
+                )
+        except asyncio.TimeoutError:
+            water_types = {}
+            # Let it finish in the background so its result lands in the
+            # cache for the next search of this coast.
+            water_types_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        except Exception:
+            water_types = {}
         for beach in scored:
             beach.water_type = water_types.get(beach.osm_id, "unknown")
 

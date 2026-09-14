@@ -23,6 +23,20 @@ DEFAULT_RADIUS_BANDS_KM: list[float] = [32, 128, 400, 804.7]
 # Stop expanding once we've accumulated this many distinct beaches.
 DEFAULT_TARGET_COUNT = 25
 
+# A wide band can return hundreds of beaches (a 400 km circle on a busy
+# coast found 236). Only the nearest MAX_CANDIDATES go on to the weather
+# and water-type stages -- fetching weather for 236 beaches to show 25 is
+# what made fresh searches crawl. Scoring still picks the best 25 of these.
+MAX_CANDIDATES = 40
+
+# The water-type classification is one big Overpass query that runs
+# alongside the weather fetches. Overpass is the slow, flaky upstream, so
+# once the weather is in we wait at most this long for it before answering
+# with "unknown" water types rather than holding the whole response.
+# Measured 2026-09-14: the batched query for 25-40 beaches takes 9-15 s on
+# the French mirror, so 12 s usually lands it; results cache for 30 days.
+WATER_TYPE_GRACE_SECONDS = 12.0
+
 # Hard ceiling: 500 miles in kilometers. We never search further than this,
 # and rank whatever was found once it's hit.
 MAX_RADIUS_KM = 804.7  # 500 miles
@@ -51,6 +65,9 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # all at once.
 OVERPASS_URLS: list[str] = [
     OVERPASS_URL,
+    # Measured 2026-09-14: the French instance answered every query in
+    # 3-7 s while kumi/private.coffee sat on them for 40 s+.
+    "https://overpass.openstreetmap.fr/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 ]
