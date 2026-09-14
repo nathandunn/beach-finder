@@ -20,11 +20,29 @@
 
   <main class="wrap">
     <section id="location-panel" class="panel">
+      <form id="place-form" class="place-form" autocomplete="off">
+        <label for="place-input">Search from a place</label>
+        <div class="place-row">
+          <input type="text" id="place-input" placeholder="Town or place, e.g. Newport OR" />
+          <button type="submit" class="btn btn-primary">Find</button>
+        </div>
+        <label class="remember-label">
+          <input type="checkbox" id="remember-place" checked />
+          Remember this place on this device (skips the location prompt next time)
+        </label>
+        <div id="place-results" class="place-results hidden"></div>
+        <p id="place-message" class="fallback-message hidden"></p>
+      </form>
+      <div id="saved-place" class="saved-place hidden">
+        Saved place: <strong id="saved-place-label"></strong>
+        <button id="saved-place-use" type="button" class="btn btn-secondary">Use it</button>
+        <button id="saved-place-forget" type="button" class="btn btn-link">Forget</button>
+      </div>
       <div id="location-status" class="location-status">
-        <button id="use-my-location" type="button" class="btn btn-primary">
+        <button id="use-my-location" type="button" class="btn btn-secondary">
           Use my location
         </button>
-        <span class="hint">We only ask your browser for your position &mdash; nothing is stored.</span>
+        <span class="hint">Asks your browser for your position &mdash; the position itself is never stored.</span>
       </div>
 
       <div id="manual-fallback" class="manual-fallback hidden">
@@ -72,6 +90,7 @@
     <section id="results-panel" class="hidden">
       <div class="results-meta">
         <span id="results-summary"></span>
+        <button id="units-toggle" type="button" class="btn btn-link">Show miles</button>
         <button id="change-location-btn" type="button" class="btn btn-link">Change location</button>
       </div>
 
@@ -91,6 +110,10 @@
           <select id="sort-select" class="sort-dropdown">
             <option value="distance">&#128663; Distance (Closest)</option>
             <option value="arrival">&#9728;&#65039; Weather (Best)</option>
+            <option value="north">&#129033; Latitude (North first)</option>
+            <option value="south">&#129035; Latitude (South first)</option>
+            <option value="west">&#129032; Longitude (West first)</option>
+            <option value="east">&#129034; Longitude (East first)</option>
           </select>
         </div>
 

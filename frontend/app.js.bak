@@ -1,11 +1,8 @@
 /* Beach Finder frontend -- plain JS, no build step, no dependencies.
  *
- * Flow: a remembered place (localStorage) searches straight away; otherwise
- * ask for geolocation on load -> fetch /api/beaches -> render a ranked list.
- * v0.5 adds search by place name (Open-Meteo geocoder, no key) with a
- * "remember this place" option, so nobody has to answer the location prompt
- * twice. Geolocation denial or failure falls back to the place search and a
- * manual lat/lon form (plus example-city shortcuts), never a dead end.
+ * Flow: ask for geolocation on load -> fetch /api/beaches -> render a
+ * ranked list. Geolocation denial or failure falls back to a manual
+ * lat/lon form (plus example-city shortcuts), never a dead end.
  *
  * Card layout/interaction (click-to-expand, score chips, weather-item
  * rows, hourly-forecast list) and the sort/max-distance control bar are
@@ -23,9 +20,6 @@
   "use strict";
 
   var API_BASE = "/api";
-  // Place-name search: Open-Meteo's free geocoder (no key, CORS-enabled).
-  var GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
-  var SAVED_PLACE_KEY = "beachFinder.savedPlace";
 
   var EXAMPLE_CITIES = [
     { label: "Newport, OR", lat: 44.6368, lon: -124.0535 },
@@ -53,16 +47,6 @@
 
   var els = {
     locationPanel: document.getElementById("location-panel"),
-    placeForm: document.getElementById("place-form"),
-    placeInput: document.getElementById("place-input"),
-    placeResults: document.getElementById("place-results"),
-    placeMessage: document.getElementById("place-message"),
-    rememberPlace: document.getElementById("remember-place"),
-    savedPlace: document.getElementById("saved-place"),
-    savedPlaceLabel: document.getElementById("saved-place-label"),
-    savedPlaceUse: document.getElementById("saved-place-use"),
-    savedPlaceForget: document.getElementById("saved-place-forget"),
-    unitsToggle: document.getElementById("units-toggle"),
     manualFallback: document.getElementById("manual-fallback"),
     fallbackMessage: document.getElementById("fallback-message"),
     useMyLocationBtn: document.getElementById("use-my-location"),
@@ -109,17 +93,12 @@
 
   var loadingTimer = null;
   var lastCoords = null;
-  var lastPlaceLabel = null;  // the name the current results were searched from, if any
-  // Distances in miles for searches in the US or UK (by the geocoder's country code, or a
-  // bounding-box guess for raw coordinates); a toggle in the control bar overrides it.
-  var useMiles = false;
-  var KM_TO_MI = 0.621371;
 
   // Sort/filter state -- applied client-side over the last fetched
   // response, no re-fetch needed (mirrors Oregon's App.tsx useEffect
   // filter/sort pipeline, just without React state).
   var currentData = null;
-  var sortBy = "distance"; // "distance" | "arrival" | "north" | "south" | "west" | "east"
+  var sortBy = "distance"; // "distance" | "arrival"
   var maxDistanceKm = null;
 
   // Water-type chip state (SPEC v0.4) -- multi-select, all on by default.
@@ -184,29 +163,7 @@
   }
 
   function formatDistance(km) {
-    if (useMiles) {
-      var mi = km * KM_TO_MI;
-      return mi < 0.1 ? Math.round(mi * 5280) + " ft" : mi.toFixed(1) + " mi";
-    }
     return km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km";
-  }
-
-  function formatRoundDistance(km) {
-    return useMiles ? Math.round(km * KM_TO_MI) + " mi" : Math.round(km) + " km";
-  }
-
-  function inUsOrUk(lat, lon) {
-    var us48 = lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
-    var alaska = lat >= 51 && lat <= 72 && lon >= -170 && lon <= -129;
-    var hawaii = lat >= 18 && lat <= 23 && lon >= -161 && lon <= -154;
-    var uk = lat >= 49.8 && lat <= 61 && lon >= -8.7 && lon <= 2;
-    return us48 || alaska || hawaii || uk;
-  }
-
-  function chooseUnits(lat, lon, countryCode) {
-    if (countryCode) useMiles = countryCode === "US" || countryCode === "GB";
-    else useMiles = inUsOrUk(lat, lon);
-    if (els.unitsToggle) els.unitsToggle.textContent = useMiles ? "Show km" : "Show miles";
   }
 
   // Oregon's formatTime, unchanged shape ("Xh Ym" / "Ym").
@@ -447,13 +404,13 @@
     });
 
     els.resultsSummary.textContent =
-      (lastPlaceLabel ? "Near " + lastPlaceLabel + " · " : "") +
       beaches.length +
       " of " +
       currentData.beaches.length +
       (currentData.beaches.length === 1 ? " beach" : " beaches") +
       " shown · searched within " +
-      formatRoundDistance(currentData.searched_radius_km);
+      Math.round(currentData.searched_radius_km) +
+      " km";
   }
 
   function applyFiltersAndRender() {
@@ -467,26 +424,22 @@
 
     var filtered = withinDistance.filter(passesWaterFilter);
     var sorted = filtered.slice().sort(function (a, b) {
-      switch (sortBy) {
-        case "arrival": return b.scores.arrival - a.scores.arrival;
-        case "north": return b.lat - a.lat;
-        case "south": return a.lat - b.lat;
-        case "west": return a.lon - b.lon;
-        case "east": return b.lon - a.lon;
-        default: return a.distance_km - b.distance_km;
+      if (sortBy === "arrival") {
+        return b.scores.arrival - a.scores.arrival;
       }
+      return a.distance_km - b.distance_km;
     });
     renderBeachList(sorted);
   }
 
   function updateMaxDistanceValueLabel(value, maxKm) {
-    els.maxDistanceValue.textContent = value >= maxKm ? "All" : formatRoundDistance(value);
+    els.maxDistanceValue.textContent = value >= maxKm ? "All" : Math.round(value) + " km";
   }
 
   function updateDistanceLabels(maxKm) {
-    els.distanceLabelMin.textContent = formatRoundDistance(1);
-    els.distanceLabelMid.textContent = formatRoundDistance(maxKm / 2);
-    els.distanceLabelMax.textContent = formatRoundDistance(maxKm) + " (All)";
+    els.distanceLabelMin.textContent = "1 km";
+    els.distanceLabelMid.textContent = Math.round(maxKm / 2) + " km";
+    els.distanceLabelMax.textContent = maxKm + " km (All)";
   }
 
   function initControlsForData(data) {
@@ -520,10 +473,8 @@
     showOnly(els.errorPanel);
   }
 
-  function search(lat, lon, label, countryCode) {
+  function search(lat, lon) {
     lastCoords = { lat: lat, lon: lon };
-    lastPlaceLabel = label || null;
-    chooseUnits(lat, lon, countryCode || null);
     showOnly(els.loadingPanel);
     startLoadingMessages();
 
@@ -571,11 +522,6 @@
       return;
     }
 
-    // Show a loading state immediately so the user knows something is happening
-    // while the browser permission prompt is pending or geolocation is resolving.
-    els.loadingMessage.textContent = "Detecting your location…";
-    showOnly(els.loadingPanel);
-
     navigator.geolocation.getCurrentPosition(
       function (position) {
         search(position.coords.latitude, position.coords.longitude);
@@ -592,106 +538,10 @@
           default:
             message = "Couldn't determine your location. Enter coordinates below, or pick a city.";
         }
-        // Return to location panel before showing the fallback message
-        showOnly(els.locationPanel);
         showManualFallback(message);
       },
       { timeout: 10000, maximumAge: 5 * 60 * 1000 }
     );
-  }
-
-  // --- place search + remembered place (v0.5) ---
-
-  function loadSavedPlace() {
-    try {
-      var raw = window.localStorage.getItem(SAVED_PLACE_KEY);
-      if (!raw) return null;
-      var p = JSON.parse(raw);
-      if (typeof p.lat !== "number" || typeof p.lon !== "number" || !p.label) return null;
-      return p;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function savePlace(place) {
-    try {
-      window.localStorage.setItem(SAVED_PLACE_KEY, JSON.stringify(place));
-    } catch (e) {
-      /* private mode or storage blocked: the search still works, it just isn't remembered */
-    }
-    renderSavedPlace();
-  }
-
-  function forgetPlace() {
-    try {
-      window.localStorage.removeItem(SAVED_PLACE_KEY);
-    } catch (e) {}
-    renderSavedPlace();
-  }
-
-  function renderSavedPlace() {
-    var p = loadSavedPlace();
-    els.savedPlace.classList.toggle("hidden", !p);
-    if (p) els.savedPlaceLabel.textContent = p.label;
-  }
-
-  function placeLabel(r) {
-    var parts = [r.name];
-    if (r.admin1 && r.admin1 !== r.name) parts.push(r.admin1);
-    if (r.country) parts.push(r.country);
-    return parts.join(", ");
-  }
-
-  function usePlace(place) {
-    if (els.rememberPlace.checked) savePlace(place);
-    search(place.lat, place.lon, place.label, place.cc || null);
-  }
-
-  function geocode(query) {
-    els.placeResults.innerHTML = "";
-    els.placeResults.classList.add("hidden");
-    els.placeMessage.textContent = "Looking up \u201c" + query + "\u201d\u2026";
-    els.placeMessage.classList.remove("hidden");
-    var url = GEOCODE_URL + "?name=" + encodeURIComponent(query) + "&count=6&language=en&format=json";
-    return fetch(url)
-      .then(function (r) {
-        if (!r.ok) throw new Error("geocoder answered " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        var results = (data && data.results) || [];
-        if (results.length === 0) {
-          els.placeMessage.textContent = "No place called \u201c" + query + "\u201d found. Try adding a state or country.";
-          return;
-        }
-        // one clear answer: go straight there; several: let them choose
-        var places = results.map(function (r) {
-          return { label: placeLabel(r), lat: r.latitude, lon: r.longitude, cc: r.country_code || null };
-        });
-        if (places.length === 1) {
-          els.placeMessage.classList.add("hidden");
-          usePlace(places[0]);
-          return;
-        }
-        els.placeMessage.textContent = "Which one?";
-        places.forEach(function (p) {
-          var b = document.createElement("button");
-          b.type = "button";
-          b.textContent = p.label;
-          b.addEventListener("click", function () {
-            els.placeMessage.classList.add("hidden");
-            els.placeResults.classList.add("hidden");
-            usePlace(p);
-          });
-          els.placeResults.appendChild(b);
-        });
-        els.placeResults.classList.remove("hidden");
-      })
-      .catch(function (err) {
-        els.placeMessage.textContent = "Couldn\u2019t look that up (" + err.message + "). Try again, or use coordinates below.";
-        els.manualFallback.classList.remove("hidden");
-      });
   }
 
   function buildExampleCityButtons() {
@@ -700,7 +550,7 @@
       btn.type = "button";
       btn.textContent = city.label;
       btn.addEventListener("click", function () {
-        usePlace({ label: city.label, lat: city.lat, lon: city.lon });
+        search(city.lat, city.lon);
       });
       els.exampleCities.appendChild(btn);
     });
@@ -713,27 +563,6 @@
   // --- wire up events ---
 
   els.useMyLocationBtn.addEventListener("click", requestGeolocation);
-
-  els.placeForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var q = els.placeInput.value.trim();
-    if (q.length < 2) return;
-    geocode(q);
-  });
-  els.savedPlaceUse.addEventListener("click", function () {
-    var p = loadSavedPlace();
-    if (p) search(p.lat, p.lon, p.label, p.cc || null);
-  });
-  els.savedPlaceForget.addEventListener("click", forgetPlace);
-  els.unitsToggle.addEventListener("click", function () {
-    useMiles = !useMiles;
-    els.unitsToggle.textContent = useMiles ? "Show km" : "Show miles";
-    if (currentData) {
-      updateDistanceLabels(Number(els.maxDistanceSlider.max));
-      updateMaxDistanceValueLabel(Number(els.maxDistanceSlider.value), Number(els.maxDistanceSlider.max));
-      applyFiltersAndRender();
-    }
-  });
 
   els.manualForm.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -779,16 +608,8 @@
   });
 
   buildExampleCityButtons();
-  renderSavedPlace();
 
-  // A remembered place skips the location prompt entirely; otherwise ask for
-  // geolocation on load, per spec -- the place search and manual fallback stay
-  // available underneath in case it's denied.
-  var saved = loadSavedPlace();
-  if (saved) {
-    els.placeInput.value = saved.label;
-    search(saved.lat, saved.lon, saved.label, saved.cc || null);
-  } else {
-    requestGeolocation();
-  }
+  // Ask for geolocation as soon as the page loads, per spec -- the manual
+  // fallback panel stays available underneath in case it's denied.
+  requestGeolocation();
 })();
