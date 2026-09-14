@@ -14,7 +14,11 @@ from __future__ import annotations
 # OSM id). Bands are deliberately fine-grained near the user and coarser
 # further out, matching the spec's "5-10km near the user, widening further
 # out" guidance.
-DEFAULT_RADIUS_BANDS_KM: list[float] = [8, 16, 32, 64, 128, 256, 400, 804.7]
+# v0.5: fewer, wider bands. Every band is a round trip to Overpass (tens of
+# seconds when the public servers are busy), so the sequence now starts at
+# 32 km -- which satisfies the target for almost any coastal query in one
+# call -- and jumps by 4x, instead of creeping outward 8 -> 16 -> 32.
+DEFAULT_RADIUS_BANDS_KM: list[float] = [32, 128, 400, 804.7]
 
 # Stop expanding once we've accumulated this many distinct beaches.
 DEFAULT_TARGET_COUNT = 25
@@ -41,6 +45,15 @@ TILE_SIZE_DEG = 0.25
 # --- Overpass client -----------------------------------------------------
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# v0.5: the same query is raced against every mirror here and the first good
+# answer wins (the others are cancelled). The public servers are individually
+# unreliable -- 504s and 30-60 s waits are normal at busy times -- but rarely
+# all at once.
+OVERPASS_URLS: list[str] = [
+    OVERPASS_URL,
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
 OVERPASS_USER_AGENT = "beach-finder/0.1 (contact: ndunnme@gmail.com)"
 OVERPASS_TIMEOUT_SECONDS = 25.0
 OVERPASS_MAX_RETRIES = 3

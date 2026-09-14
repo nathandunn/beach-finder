@@ -145,6 +145,7 @@
       { at: 5000, text: "Still searching — checking a wider radius…" },
       { at: 12000, text: "Widening the search further — this area may be sparse on beaches…" },
       { at: 22000, text: "Almost there — fetching live weather for every beach found…" },
+      { at: 40000, text: "Still working — a place searched for the first time can take up to a minute while the map servers answer…" },
     ];
     var start = Date.now();
     els.loadingMessage.textContent = stages[0].text;

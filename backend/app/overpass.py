@@ -17,6 +17,7 @@ from .config import (
     OVERPASS_RETRY_STATUS_CODES,
     OVERPASS_TIMEOUT_SECONDS,
     OVERPASS_URL,
+    OVERPASS_URLS,
     OVERPASS_USER_AGENT,
     TILE_SIZE_DEG,
 )
@@ -104,29 +105,22 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[BeachElement]:
     return beaches
 
 
-async def post_overpass_query(client: httpx.AsyncClient, query: str) -> dict[str, Any] | None:
-    """POST a raw Overpass QL query with retry/backoff on 429/504 and the
-    shared User-Agent, returning the parsed JSON payload.
-
-    Returns None if every retry is exhausted, the response is a
-    non-retryable error, or the body isn't valid JSON -- callers turn that
-    into whatever "nothing found" behavior fits their situation (an empty
-    beach list for a band search, "unknown" for every beach in the water-
-    type batch query, etc). Shared by HttpOverpassClient (beach geometry)
-    and HttpWaterTypeClient (SPEC v0.4 water features) so both upstream
-    calls get identical politeness -- one retry/backoff implementation,
-    not two copies that could drift.
-    """
+async def _post_one(client: httpx.AsyncClient, url: str, query: str) -> dict[str, Any] | None:
+    """POST to a single Overpass endpoint with retry/backoff on 429/504.
+    Returns None when the endpoint gives up -- see post_overpass_query."""
     headers = {"User-Agent": OVERPASS_USER_AGENT}
 
     for attempt in range(OVERPASS_MAX_RETRIES):
         try:
-            response = await client.post(OVERPASS_URL, data={"data": query}, headers=headers)
+            response = await client.post(url, data={"data": query}, headers=headers)
         except httpx.TimeoutException:
             if attempt == OVERPASS_MAX_RETRIES - 1:
                 return None
             await asyncio.sleep(OVERPASS_BACKOFF_BASE_SECONDS * (2**attempt))
             continue
+        except httpx.HTTPError:
+            # DNS/connection trouble at one mirror -- let the others carry on
+            return None
 
         if response.status_code in OVERPASS_RETRY_STATUS_CODES:
             if attempt == OVERPASS_MAX_RETRIES - 1:
@@ -145,6 +139,43 @@ async def post_overpass_query(client: httpx.AsyncClient, query: str) -> dict[str
             return None
 
     return None
+
+
+async def post_overpass_query(
+    client: httpx.AsyncClient, query: str, urls: list[str] | None = None
+) -> dict[str, Any] | None:
+    """POST a raw Overpass QL query, racing every configured mirror (v0.5)
+    and returning the first parsed JSON payload; the slower attempts are
+    cancelled. Each mirror gets the retry/backoff of `_post_one`.
+
+    Returns None if every mirror is exhausted, answers a non-retryable
+    error, or sends back something that isn't JSON -- callers turn that
+    into whatever "nothing found" behavior fits their situation (an empty
+    beach list for a band search, "unknown" for every beach in the water-
+    type batch query, etc). Shared by HttpOverpassClient (beach geometry)
+    and HttpWaterTypeClient (SPEC v0.4 water features) so both upstream
+    calls get identical politeness -- one implementation, not two copies
+    that could drift.
+    """
+    endpoints = list(urls) if urls else list(OVERPASS_URLS)
+    if len(endpoints) == 1:
+        return await _post_one(client, endpoints[0], query)
+
+    tasks = {asyncio.ensure_future(_post_one(client, u, query)) for u in endpoints}
+    try:
+        while tasks:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in done:
+                try:
+                    payload = t.result()
+                except Exception:
+                    payload = None
+                if payload is not None:
+                    return payload
+        return None
+    finally:
+        for t in tasks:
+            t.cancel()
 
 
 class HttpOverpassClient:
